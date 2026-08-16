@@ -1,0 +1,34 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+**/build/
+**/.vite/
+
+# Python environments, caches, and coverage
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Logs and local tooling
+**/*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local databases and generated files
+*.sqlite
+*.sqlite3
+*.db
+coverage/
+

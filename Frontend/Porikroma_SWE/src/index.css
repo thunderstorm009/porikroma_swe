@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-white: #FFFFFF;
+  --color-fog: #F5F6F4;
+  --color-navy: #14232F;
+  --color-teal-primary: #2D6A4F;
+  --color-teal-hover: #1B4332;
+  --color-amber-accent: #D98E3D;
+  --color-border-custom: #DDE1DE;
+
+  --font-serif: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-white);
+    color: var(--color-navy);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 500;
+  }
+}
+
+/* Custom interactive element styles */
+a, button {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Focus indicator */
+*:focus-visible {
+  outline: 2px solid var(--color-teal-primary) !important;
+  outline-offset: 4px !important;
+}
+
+/* Scroll padding for sticky header */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
