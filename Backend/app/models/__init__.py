@@ -567,6 +567,40 @@ class TourReservationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     traveler: Mapped["Profile"] = relationship(back_populates="reservations", foreign_keys=[traveler_id])
 
 
+class TripInvitation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "trip_invitations"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'accepted', 'declined', 'cancelled')", name="ck_trip_invitations_status"),
+        Index("ix_trip_invitations_trip_id", "trip_id"),
+        Index("ix_trip_invitations_invitee_email", "invitee_email"),
+    )
+
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    inviter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    invitee_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+
+    trip: Mapped["Trip"] = relationship()
+    inviter: Mapped["Profile"] = relationship(foreign_keys=[inviter_id])
+
+
+class TripJoinRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "trip_join_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')", name="ck_trip_join_requests_status"),
+        Index("ix_trip_join_requests_trip_id", "trip_id"),
+        Index("ix_trip_join_requests_user_id", "user_id"),
+    )
+
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+
+    trip: Mapped["Trip"] = relationship()
+    user: Mapped["Profile"] = relationship(foreign_keys=[user_id])
+
+
 class AuditLog(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "audit_logs"
     __table_args__ = (Index("ix_audit_logs_resource", "resource_type", "resource_id"), Index("ix_audit_logs_created_at", "created_at"))
@@ -586,4 +620,5 @@ __all__ = [
     "ForumQuestion", "ForumReply", "ForumTag", "Hotel", "ItineraryItem", "JournalEntry",
     "Notification", "PackingItem", "Profile", "QuestionBookmark", "QuestionFollower",
     "QuestionLike", "Restaurant", "Trip", "TripMember", "TripMessage", "TripPhoto",
+    "TripInvitation", "TripJoinRequest"
 ]

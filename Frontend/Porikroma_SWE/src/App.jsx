@@ -124,13 +124,32 @@ export default function App() {
     const { tripId } = useParams();
     const activeTrip = trips.find((t) => t.id === String(tripId) || t.id === Number(tripId));
     const [loadedTrip, setLoadedTrip] = useState(null);
+    const [isLoading, setIsLoading] = useState(!activeTrip && !!tripId);
+
     useEffect(() => {
-      if (activeTrip || !tripId) return undefined;
+      if (activeTrip || !tripId) {
+        setIsLoading(false);
+        return undefined;
+      }
       let active = true;
-      tripService.getTrip(tripId).then((trip) => { if (active) setLoadedTrip(toUiTrip(trip)); }).catch((error) => console.error('Failed to load trip:', error));
+      setIsLoading(true);
+      tripService.getTrip(tripId)
+        .then((trip) => { if (active) setLoadedTrip(toUiTrip(trip)); })
+        .catch((error) => console.error('Failed to load trip:', error))
+        .finally(() => { if (active) setIsLoading(false); });
       return () => { active = false; };
     }, [activeTrip, tripId]);
+
     const resolvedTrip = activeTrip || loadedTrip;
+
+    if (isLoading) {
+      return <div className="flex h-screen items-center justify-center text-teal-primary text-xl">Loading Trip...</div>;
+    }
+
+    if (!resolvedTrip && tripId) {
+      return <div className="flex h-screen items-center justify-center text-red-500 text-xl">404 - Trip Not Found</div>;
+    }
+
     if (tripOnly) {
       return <Component onNavigate={handleNavigate} onGoBack={handleGoBack} trip={resolvedTrip} agentPlan={agentPlans[tripId]} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} />;
     }

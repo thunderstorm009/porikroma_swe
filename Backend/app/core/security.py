@@ -79,35 +79,57 @@ def get_current_profile(
     if profile:
         if profile.account_status != "active":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is not active")
-        traveler_role = db.scalar(select(Role).where(Role.name == "traveler"))
-        if traveler_role is None:
-            traveler_role = Role(name="traveler", description="Create and manage personal travel plans and community activity.")
-            db.add(traveler_role)
+        user_metadata = current_user.claims.get("user_metadata") or {}
+        requested_role_name = user_metadata.get("requested_role")
+        
+        if requested_role_name in ("Travel Planner", "provider"):
+            role_name = "provider"
+            role_desc = "Create and manage travel plans for others."
+        else:
+            role_name = "traveler"
+            role_desc = "Create and manage personal travel plans and community activity."
+
+        role = db.scalar(select(Role).where(Role.name == role_name))
+        if role is None:
+            role = Role(name=role_name, description=role_desc)
+            db.add(role)
             db.flush()
-        assignment = db.scalar(select(UserRole).where(UserRole.user_id == profile.id, UserRole.role_id == traveler_role.id))
+        
+        assignment = db.scalar(select(UserRole).where(UserRole.user_id == profile.id, UserRole.role_id == role.id))
         if assignment is None:
-            db.add(UserRole(user_id=profile.id, role_id=traveler_role.id))
+            db.add(UserRole(user_id=profile.id, role_id=role.id))
             db.commit()
         elif assignment.revoked_at is not None:
             assignment.revoked_at = None
             db.commit()
         return profile
     claims = current_user.claims
+    user_metadata = claims.get("user_metadata") or {}
     email = str(claims.get("email", ""))
     username = email.split("@", 1)[0][:80] or f"traveler-{str(current_user.id)[:8]}"
     profile = Profile(
         id=current_user.id,
         username=username,
-        full_name=(claims.get("user_metadata") or {}).get("full_name") or claims.get("name"),
+        full_name=user_metadata.get("full_name") or claims.get("name"),
     )
     db.add(profile)
     db.commit()
     db.refresh(profile)
-    traveler_role = db.scalar(select(Role).where(Role.name == "traveler"))
-    if traveler_role is None:
-        traveler_role = Role(name="traveler", description="Create and manage personal travel plans and community activity.")
-        db.add(traveler_role)
+
+    requested_role_name = user_metadata.get("requested_role")
+    if requested_role_name in ("Travel Planner", "provider"):
+        role_name = "provider"
+        role_desc = "Create and manage travel plans for others."
+    else:
+        role_name = "traveler"
+        role_desc = "Create and manage personal travel plans and community activity."
+
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if role is None:
+        role = Role(name=role_name, description=role_desc)
+        db.add(role)
         db.flush()
-    db.add(UserRole(user_id=profile.id, role_id=traveler_role.id))
+        
+    db.add(UserRole(user_id=profile.id, role_id=role.id))
     db.commit()
     return profile

@@ -27,7 +27,33 @@ export default function BrowseGroupsPage({ onNavigate }) {
   const textareaRef = useRef(null);
 
   // Bangladesh open group trips dataset
-  const [trips, setTrips] = useState(BANGLADESH_OPEN_GROUPS);
+  const [trips, setTrips] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    import('../services/apiClient').then(({ apiClient }) => {
+      apiClient.get('/api/v1/trips', { travel_type: 'group' })
+        .then(response => {
+          const items = response.data?.items || [];
+          setTrips(items.map(trip => ({
+            ...trip,
+            destination: trip.destination?.name || trip.title || 'Group Trip',
+            dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
+            openSlots: true, // Assuming open slots for now
+            slotsLeft: 10 - (trip.members?.length || 0),
+            creator: trip.created_by?.full_name || trip.created_by?.username || 'Creator',
+            creatorBg: 'bg-teal-primary text-white',
+            members: (trip.members || []).slice(0, 3).map(m => ({
+              initial: (m.user?.full_name || m.user?.username || 'T')[0].toUpperCase(),
+              bg: 'bg-navy/80 text-white'
+            })),
+            question: trip.description || 'Why would you like to join our group trip?'
+          })));
+        })
+        .catch(err => console.error('Failed to load group trips', err))
+        .finally(() => setIsLoading(false));
+    });
+  }, []);
 
   // Sidebar Menu Items
   const menuItems = [
@@ -42,7 +68,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
   const filteredTrips = trips.filter(trip => {
     const matchesSearch = trip.destination.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSlots = !openSlotsOnly || trip.openSlots;
-    const matchesDate = !dateFilter || trip.dateKey === dateFilter;
+    const matchesDate = !dateFilter || (trip.dates && trip.dates.toLowerCase().includes(dateFilter));
     return matchesSearch && matchesSlots && matchesDate;
   });
 
@@ -75,20 +101,26 @@ export default function BrowseGroupsPage({ onNavigate }) {
     setAnswer('');
   };
 
-  const handleSendRequest = (e) => {
+  const handleSendRequest = async (e) => {
     e.preventDefault();
-    if (!answer.trim()) return;
+    if (!answer.trim() || !selectedTrip) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      await apiClient.post(`/api/v1/trips/${selectedTrip.id}/join-requests`, {
+        message: answer
+      });
       setShowConfirmation(true);
-      
-      // Auto dismiss after a brief confirmation
       setTimeout(() => {
         handleCloseModal();
       }, 2000);
-    }, 1500);
+    } catch (err) {
+      console.error('Failed to send join request', err);
+      alert('Failed to send request. ' + (err.message || ''));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

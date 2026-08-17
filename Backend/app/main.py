@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.db.database import test_database
-from app.api.routes import admin, ai, auth, destinations, forum, misc, providers, resource_aliases, tours, trips, users
+from app.api.routes import admin, ai, auth, destinations, forum, misc, providers, resource_aliases, tours, trips, users, ws
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -40,6 +40,7 @@ app.include_router(misc.weather_router, prefix="/api/v1")
 app.include_router(misc.notifications_router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(resource_aliases.router, prefix="/api/v1")
+app.include_router(ws.router, prefix="/api/v1/ws")
 
 
 @app.exception_handler(SQLAlchemyError)

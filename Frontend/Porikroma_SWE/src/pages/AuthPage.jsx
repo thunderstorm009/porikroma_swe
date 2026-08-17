@@ -15,7 +15,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const [signupFields, setSignupFields] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [signupFields, setSignupFields] = useState({ name: '', email: '', password: '', confirmPassword: '', requested_role: 'Traveler' });
   const [signupTouched, setSignupTouched] = useState({ name: false, email: false, password: false, confirmPassword: false });
   const [signupSubmitting, setSignupSubmitting] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
@@ -27,7 +27,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
     setLoginSuccess(false);
     setShowPassword(false);
 
-    setSignupFields({ name: '', email: '', password: '', confirmPassword: '' });
+    setSignupFields({ name: '', email: '', password: '', confirmPassword: '', requested_role: 'Traveler' });
     setSignupTouched({ name: false, email: false, password: false, confirmPassword: false });
     setSignupSuccess(false);
     setShowConfirmPassword(false);
@@ -147,6 +147,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
         options: {
           data: {
             full_name: signupFields.name,
+            requested_role: signupFields.requested_role === 'Travel Planner' ? 'provider' : 'user'
           }
         }
       });
@@ -534,6 +535,23 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
                     {signupTouched.confirmPassword && signupErrors.confirmPassword && (
                       <p className="text-xs text-red-600 font-medium">{signupErrors.confirmPassword}</p>
                     )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="signup-role" className="block text-xs font-semibold uppercase tracking-wider text-navy/70">
+                      Account Type
+                    </label>
+                    <select
+                      id="signup-role"
+                      name="requested_role"
+                      value={signupFields.requested_role}
+                      onChange={handleSignupChange}
+                      disabled={signupSubmitting || signupSuccess}
+                      className="w-full px-3.5 py-2 border border-border-custom rounded-lg text-sm bg-white text-navy focus:outline-none focus:border-teal-primary focus:ring-1 focus:ring-teal-primary transition-all"
+                    >
+                      <option value="Traveler">Traveler</option>
+                      <option value="Travel Planner">Travel Planner</option>
+                    </select>
                   </div>
 
                   <button
