@@ -111,6 +111,7 @@ class TripCreate(APIModel):
     traveler_count: int = Field(default=1, ge=1, le=100)
     budget: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
     status: Literal["planning", "active", "completed", "cancelled"] = "planning"
+    visibility: Literal["private", "public"] = "private"
 
     @model_validator(mode="after")
     def valid_dates(self):
@@ -131,6 +132,7 @@ class TripUpdate(APIModel):
     traveler_count: Optional[int] = Field(default=None, ge=1, le=100)
     budget: Optional[Decimal] = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     status: Optional[Literal["planning", "active", "completed", "cancelled"]] = None
+    visibility: Optional[Literal["private", "public"]] = None
 
 
 class TripRead(APIModel):
@@ -145,6 +147,7 @@ class TripRead(APIModel):
     traveler_count: int
     budget: Decimal
     status: str
+    visibility: str
     created_at: datetime
     updated_at: datetime
     destination: Optional[DestinationRead] = None
@@ -604,3 +607,22 @@ class RoleAssignment(APIModel):
 
 class AccountStatusUpdate(APIModel):
     account_status: Literal["active", "suspended", "deactivated"]
+
+
+class JoinRequestCreate(APIModel):
+    message: Optional[str] = Field(default=None, max_length=1000)
+
+
+class JoinRequestUpdate(APIModel):
+    status: Literal["approved", "rejected", "cancelled"]
+
+
+class JoinRequestRead(APIModel):
+    id: UUID
+    trip_id: UUID
+    user_id: UUID
+    status: str
+    message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    user: Optional[ProfileRead] = None

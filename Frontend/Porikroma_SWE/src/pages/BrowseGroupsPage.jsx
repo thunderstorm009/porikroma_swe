@@ -32,7 +32,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
 
   useEffect(() => {
     import('../services/apiClient').then(({ apiClient }) => {
-      apiClient.get('/api/v1/trips', { travel_type: 'group' })
+      apiClient.get('/api/v1/trips', { travel_type: 'group', discover: true })
         .then(response => {
           const items = response.data?.items || [];
           setTrips(items.map(trip => ({

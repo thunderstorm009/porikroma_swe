@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -20,6 +22,7 @@ from app.models import (
     TripMember,
     TripMessage,
     TripPhoto,
+    TripJoinRequest,
 )
 from app.schemas import (
     BudgetSummary,
@@ -44,6 +47,9 @@ from app.schemas import (
     TripMemberRead,
     TripRead,
     TripUpdate,
+    JoinRequestCreate,
+    JoinRequestRead,
+    JoinRequestUpdate,
 )
 from app.services.authorization import get_trip, membership, require_trip_access, require_trip_owner
 
@@ -65,10 +71,18 @@ def trip_read(trip: Trip) -> TripRead:
 def list_trips(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    discover: bool = Query(False),
+    travel_type: Optional[str] = Query(None),
     current_user: AuthenticatedUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    base = select(Trip.id).join(TripMember, TripMember.trip_id == Trip.id).where(TripMember.user_id == current_user.id)
+    if discover:
+        base = select(Trip.id).where(Trip.visibility == 'public', Trip.status == 'planning')
+    else:
+        base = select(Trip.id).join(TripMember, TripMember.trip_id == Trip.id).where(TripMember.user_id == current_user.id)
+    if travel_type:
+        base = base.where(Trip.travel_type == travel_type)
+    
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     ids = db.scalars(base.order_by(Trip.created_at.desc()).offset((page - 1) * limit).limit(limit)).all()
     trips = db.scalars(trip_query().where(Trip.id.in_(ids)).order_by(Trip.created_at.desc())).unique().all() if ids else []
@@ -380,3 +394,49 @@ def send_message(trip_id: UUID, payload: MessageCreate, profile: Profile = Depen
     db.commit()
     db.refresh(row)
     return {"data": MessageRead.model_validate(row)}
+
+@router.get("/{trip_id}/join-requests", summary="List join requests")
+def list_join_requests(trip_id: UUID, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    require_trip_access(db, trip_id, current_user.id, write=True)
+    requests = db.scalars(select(TripJoinRequest).options(selectinload(TripJoinRequest.user)).where(TripJoinRequest.trip_id == trip_id).order_by(TripJoinRequest.created_at.desc())).all()
+    return {"data": [JoinRequestRead.model_validate(req) for req in requests]}
+
+@router.post("/{trip_id}/join-requests", status_code=status.HTTP_201_CREATED, summary="Create a join request")
+def create_join_request(trip_id: UUID, payload: JoinRequestCreate, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    trip = db.get(Trip, trip_id)
+    if not trip or trip.visibility != "public":
+        raise HTTPException(status_code=404, detail="Trip not found or not public")
+    
+    if membership(db, trip_id, current_user.id):
+        raise HTTPException(status_code=409, detail="Already a member")
+        
+    existing = db.scalar(select(TripJoinRequest).where(TripJoinRequest.trip_id == trip_id, TripJoinRequest.user_id == current_user.id, TripJoinRequest.status == 'pending'))
+    if existing:
+        raise HTTPException(status_code=409, detail="Join request already pending")
+        
+    req = TripJoinRequest(trip_id=trip_id, user_id=current_user.id, message=payload.message, status='pending')
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    req = db.scalar(select(TripJoinRequest).options(selectinload(TripJoinRequest.user)).where(TripJoinRequest.id == req.id))
+    return {"data": JoinRequestRead.model_validate(req)}
+
+@router.patch("/{trip_id}/join-requests/{request_id}", summary="Update a join request")
+def update_join_request(trip_id: UUID, request_id: UUID, payload: JoinRequestUpdate, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    require_trip_access(db, trip_id, current_user.id, write=True)
+    req = db.get(TripJoinRequest, request_id)
+    if not req or req.trip_id != trip_id:
+        raise HTTPException(status_code=404, detail="Join request not found")
+        
+    if req.status != 'pending':
+        raise HTTPException(status_code=400, detail="Request is already resolved")
+        
+    req.status = payload.status
+    if payload.status == 'approved':
+        if not membership(db, trip_id, req.user_id):
+            db.add(TripMember(trip_id=trip_id, user_id=req.user_id, role="member"))
+            
+    db.commit()
+    db.refresh(req)
+    req = db.scalar(select(TripJoinRequest).options(selectinload(TripJoinRequest.user)).where(TripJoinRequest.id == req.id))
+    return {"data": JoinRequestRead.model_validate(req)}

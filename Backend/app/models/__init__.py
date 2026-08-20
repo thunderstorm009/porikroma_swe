@@ -104,6 +104,7 @@ class Trip(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     traveler_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     budget: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planning")
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, server_default="private")
 
     owner: Mapped["Profile"] = relationship(back_populates="owned_trips", foreign_keys=[owner_id])
     destination: Mapped[Optional["Destination"]] = relationship(back_populates="trips")
@@ -596,6 +597,7 @@ class TripJoinRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    message: Mapped[Optional[str]] = mapped_column(Text)
 
     trip: Mapped["Trip"] = relationship()
     user: Mapped["Profile"] = relationship(foreign_keys=[user_id])

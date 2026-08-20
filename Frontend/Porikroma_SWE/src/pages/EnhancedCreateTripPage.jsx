@@ -26,7 +26,7 @@ export default function EnhancedCreateTripPage({ onNavigate, onCreateTrip, theme
   const generate = async () => { setLoading(true); const response = await aiService.generateTripPlan(form); setPlans(response.plans); setLoading(false); setStep(4); };
   const submit = () => {
     const plan = plans.find((item) => item.id === selectedPlan) || plans[0];
-    onCreateTrip({ title: `${form.destination.name} trip`, description: `${form.style} travel plan for ${form.destination.name}.`, start_date: form.startDate, end_date: form.endDate, travel_type: form.type === 'Group' ? 'group' : 'solo', traveler_count: form.members.length, budget: Number(plan.total), status: 'planning' });
+    onCreateTrip({ title: `${form.destination.name} trip`, description: `${form.style} travel plan for ${form.destination.name}.`, start_date: form.startDate, end_date: form.endDate, travel_type: form.type === 'Group' ? 'group' : 'solo', visibility: form.type === 'Group' ? 'public' : 'private', traveler_count: form.members.length, budget: Number(plan.total), status: 'planning' });
   };
   const canContinue = step === 0 || step === 1 ? true : step === 2 ? Boolean(form.startDate && form.endDate && form.budget) : true;
   const next = () => { if (step === 0 || step === 1 || step === 2) setStep(step + 1); else if (step === 3) generate(); };

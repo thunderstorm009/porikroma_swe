@@ -39,6 +39,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
   const [chatLoading, setChatLoading] = useState(false);
   const [emergencyCategory, setEmergencyCategory] = useState('All');
   const [emergencyLocations, setEmergencyLocations] = useState(MOCK_EMERGENCY_LOCATIONS);
+  const [joinRequests, setJoinRequests] = useState([]);
   const wsRef = useRef(null);
 
   const destination = getDestination(trip);
@@ -51,11 +52,20 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
     return () => { ignore = true; };
   }, [trip, destination]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (useMock || !trip?.id) return;
     let active = true;
     expenseService.list(trip.id).then((items) => { if (active) setExpenses(items); }).catch((error) => console.error('Failed to load persisted trip expenses:', error));
     
+    // Fetch join requests if group
+    if (trip?.type === 'Group') {
+      import('../services/apiClient').then(({ apiClient }) => {
+        apiClient.get(`/api/v1/trips/${trip.id}/join-requests`)
+          .then(res => { if (active) setJoinRequests(res.data || []); })
+          .catch(() => {}); // likely not owner or 403
+      });
+    }
+
     // Connect WS
     chatService.connect(trip.id, (data) => {
       setMessages((current) => [...current, {
@@ -131,7 +141,39 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
     {activeTab === 'overview' && <div className="travel-grid" style={{ gap: 17 }}>
       <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{trip.members?.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weather[0]?.temp}°C</strong><span>{weather[0]?.label}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summary.intensity}</strong><span>{summary.activities} recommended activities</span></div></div>
       <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summary.headline}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summary.budget], ['Weather', summary.weather], ['Intensity', summary.intensity]].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{summary.insights.map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weather.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day.split(',')[0]}</small><small style={{ color: day.rain > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
-      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div><span className="travel-pill green">94% match</span></div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.</p></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">People in this space</span><h2>{trip.type === 'Group' ? 'Group crew' : 'Trip Assistant'}</h2></div><Users size={18} color="#2d6a4f" /></div><div className="travel-avatar-stack" style={{ marginTop: 15 }}>{(trip.members || []).map((member, index) => <span className={`avatar avatar-${['teal', 'amber', 'blue', 'purple'][index % 4]}`} key={member.id}>{member.initial}</span>)}</div><p style={{ color: 'var(--travel-muted)', fontSize: 11, marginBottom: 0, marginTop: 9 }}>{trip.type === 'Group' ? 'Everyone sees the same itinerary, budget and map.' : 'Ask the assistant to adjust your plan as you travel.'}</p></div></div>
+      <div className="travel-grid travel-grid-2">
+        <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div><span className="travel-pill green">94% match</span></div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.</p></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 17 }}>
+          {joinRequests.filter(r => r.status === 'pending').length > 0 && (
+            <div className="travel-panel travel-panel-pad">
+              <div className="travel-section-heading" style={{ margin: 0 }}>
+                <div><span className="travel-card-kicker">Pending</span><h2>Join Requests</h2></div>
+                <Users size={18} color="#b86e20" />
+              </div>
+              <div style={{ marginTop: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {joinRequests.filter(r => r.status === 'pending').map(req => (
+                  <div key={req.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--travel-bg)', padding: '8px 12px', borderRadius: 8 }}>
+                    <div>
+                      <strong>{req.user?.full_name || req.user?.username || 'Traveler'}</strong>
+                      <small style={{ display: 'block', color: 'var(--travel-muted)', fontSize: 11 }}>{req.message || 'No message provided'}</small>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="travel-button" style={{ padding: '4px 8px', fontSize: 11 }} onClick={async () => {
+                        const { apiClient } = await import('../services/apiClient');
+                        await apiClient.patch(`/api/v1/trips/${trip.id}/join-requests/${req.id}`, { status: 'approved' });
+                        setJoinRequests(joinRequests.map(r => r.id === req.id ? { ...r, status: 'approved' } : r));
+                        // update trip members locally
+                        onUpdateTrip({ ...trip, members: [...(trip.members || []), { id: req.user_id, role: 'member', name: req.user?.full_name || 'Traveler', initial: (req.user?.full_name || 'T')[0].toUpperCase(), bg: 'bg-teal-primary/20 text-teal-primary' }] });
+                      }}>Approve</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">People in this space</span><h2>{trip.type === 'Group' ? 'Group crew' : 'Trip Assistant'}</h2></div><Users size={18} color="#2d6a4f" /></div><div className="travel-avatar-stack" style={{ marginTop: 15 }}>{(trip.members || []).map((member, index) => <span className={`avatar avatar-${['teal', 'amber', 'blue', 'purple'][index % 4]}`} key={member.id}>{member.initial}</span>)}</div><p style={{ color: 'var(--travel-muted)', fontSize: 11, marginBottom: 0, marginTop: 9 }}>{trip.type === 'Group' ? 'Everyone sees the same itinerary, budget and map.' : 'Ask the assistant to adjust your plan as you travel.'}</p></div>
+        </div>
+      </div>
     </div>}
 
     {activeTab === 'itinerary' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itinerary.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{day.items.map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destination.name}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
