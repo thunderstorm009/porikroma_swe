@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { 
   Compass, Calendar, Users, CreditCard, User, LogOut, Menu, X,
-  Shield, Check, Mail, Phone, MapPin, Globe, Bell, Lock, Camera, Edit2
+  Shield, Check, Lock, Camera
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import { useAuth } from '../contexts/AuthContext';

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Search, Plus, X, Bed, Car, Ticket, Check, ShieldCheck,
-  MapPin, Calendar, Users, DollarSign, LogOut, FileText, Map
+  Search, Plus, X, Bed, Car, Ticket, Check, ShieldCheck, LogOut, Map
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import { BANGLADESH_HOTELS, BANGLADESH_VEHICLES, BANGLADESH_TICKETS } from '../mockData';

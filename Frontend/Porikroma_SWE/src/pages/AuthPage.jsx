@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { X, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import ThemeToggle from '../components/ThemeToggle';
 import { supabase } from '../services/supabase';
+import { apiClient } from '../services/apiClient';
+
 export default function AuthPage({ onNavigate, initialTab = 'login', theme, onToggleTheme }) {
-  const [authTab, setAuthTab] = useState(initialTab);
+  const normalizedInitial = (initialTab === 'register' || initialTab === 'signup') ? 'signup' : 'login';
+  const [authTab, setAuthTab] = useState(normalizedInitial);
+
+  useEffect(() => {
+    setAuthTab((initialTab === 'register' || initialTab === 'signup') ? 'signup' : 'login');
+  }, [initialTab]);
   const shouldReduceMotion = useReducedMotion();
 
   // Form states
@@ -169,14 +176,32 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
           onNavigate('dashboard');
         }, 1500);
       } else {
-        // Otherwise, email confirmation is required
+        try {
+          await apiClient.post('/api/v1/auth/auto-confirm', { email: signupFields.email });
+          const { data: signInData } = await supabase.auth.signInWithPassword({
+            email: signupFields.email,
+            password: signupFields.password
+          });
+          if (signInData?.session) {
+            setTimeout(() => {
+              setSignupSuccess(false);
+              setSignupSubmitting(false);
+              clearForm();
+              onNavigate('dashboard');
+            }, 1000);
+            return;
+          }
+        } catch (err) {
+          console.warn('Auto-confirm step skipped:', err);
+        }
+
         setTimeout(() => {
           setSignupSuccess(false);
           setSignupSubmitting(false);
           clearForm();
           setAuthTab('login');
-          setLoginErrorMsg('Account created. Please confirm your email before logging in.');
-        }, 2500);
+          setLoginErrorMsg('Account created! You can now log in directly.');
+        }, 1500);
       }
     }
   };

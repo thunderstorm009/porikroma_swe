@@ -165,7 +165,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/login" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="login" theme={theme} onToggleTheme={toggleTheme} />} />
-      <Route path="/register" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="register" theme={theme} onToggleTheme={toggleTheme} />} />
+      <Route path="/signup" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="signup" theme={theme} onToggleTheme={toggleTheme} />} />
+      <Route path="/register" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="signup" theme={theme} onToggleTheme={toggleTheme} />} />
       
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
@@ -195,6 +196,7 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={['provider', 'platform_admin']} />}>
         <Route path="/planner/trips/:tripId" element={<TripRouteWrapper Component={AuthorTourPlanPage} tripOnly={true} />} />
       </Route>
+      <Route path="*" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
     </Routes>
   );
 }

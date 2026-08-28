@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
-  ArrowLeft, Edit, Users, Calendar, Check, X, ShieldAlert,
+  ArrowLeft, Edit, Users, Calendar, Check, X,
   Compass, CreditCard, User, LogOut, ArrowRight, Loader2, Sparkles
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';

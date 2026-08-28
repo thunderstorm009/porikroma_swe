@@ -1,4 +1,3 @@
-import { aiService } from './aiService';
 import { MOCK_CHAT_MESSAGES } from '../data/travelData';
 import { supabase } from './supabase';
 

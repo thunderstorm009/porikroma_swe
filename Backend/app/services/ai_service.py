@@ -24,35 +24,47 @@ def _mock_chat(message: str, context: dict) -> str:
     return f"For {destination}, group nearby activities, leave one flexible window, and verify current prices and local conditions before you go."
 
 
-def generate_text(prompt: str, *, system: str = "You are Porikroma AI, a careful travel assistant.") -> str:
+def generate_text(prompt: str, *, system: str = "You are Porikroma AI, a helpful travel assistant. Provide clear, well-structured responses using clean paragraphs, bold headers, and bulleted lists.") -> str:
     settings = get_settings()
-    if settings.ai_provider != "openai":
+    provider = settings.ai_provider
+
+    if provider == "groq":
+        api_key = settings.groq_api_key
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        model = settings.groq_model
+    elif provider == "openai":
+        api_key = settings.openai_api_key
+        url = "https://api.openai.com/v1/chat/completions"
+        model = "gpt-4o-mini"
+    else:
         return _mock_chat(prompt, {})
-    if not settings.openai_api_key:
-        raise RuntimeError("AI provider is not configured")
+
+    if not api_key:
+        raise RuntimeError(f"AI provider '{provider}' is not configured (missing API key)")
+
     try:
         with httpx.Client(timeout=30) as client:
             response = client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-                json={"model": "gpt-4o-mini", "temperature": 0.2, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]},
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "temperature": 0.2, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]},
             )
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
     except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("AI provider is temporarily unavailable") from exc
+        raise RuntimeError(f"AI provider '{provider}' is temporarily unavailable") from exc
 
 
 def chat(message: str, context: dict) -> str:
     settings = get_settings()
-    if settings.ai_provider != "openai":
+    if settings.ai_provider not in {"openai", "groq"}:
         return _mock_chat(message, context)
     prompt = json.dumps({"question": message, "authorized_trip_context": context}, default=str)
     return generate_text(prompt)
 
 
 def trip_plan(destination: str, start_date: date, end_date: date, budget: Decimal, interests: list[str], travel_style: str) -> dict:
-    if get_settings().ai_provider == "openai":
+    if get_settings().ai_provider in {"openai", "groq"}:
         raw = generate_text(json.dumps({"destination": destination, "start_date": start_date, "end_date": end_date, "budget": budget, "interests": interests, "travel_style": travel_style}, default=str), system="Return only JSON matching {summary:string, estimated_budget:number, days:[{day:number,date:YYYY-MM-DD,activities:[object]}]}.")
         try:
             return json.loads(raw.replace("```json", "").replace("```", "").strip())

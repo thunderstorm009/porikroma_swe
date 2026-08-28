@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
   ArrowLeft, Compass, Calendar, Users, CreditCard, User, LogOut, Check,
-  Hotel, Car, Ticket, RefreshCw, Sparkles, MapPin, X, ArrowRight, Menu
+  Hotel, Car, Ticket, RefreshCw, X, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 

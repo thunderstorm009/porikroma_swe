@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
-  Users, Calendar, Compass, CreditCard, User, LogOut, Search, Filter,
-  X, Check, AlertCircle, Loader2, ArrowRight, Menu
+  Users, Calendar, Compass, CreditCard, User, LogOut, Search,
+  X, Check, Loader2, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { BANGLADESH_OPEN_GROUPS } from '../mockData';
 
 export default function BrowseGroupsPage({ onNavigate }) {
   const shouldReduceMotion = useReducedMotion();

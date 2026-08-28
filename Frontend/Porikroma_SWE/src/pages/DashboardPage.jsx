@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { 
-  Plus, Users, Calendar, BarChart3, Settings, LogOut, Check, X,
-  MapPin, PlusCircle, Compass, CreditCard, User, Menu, AlertCircle
+  Plus, Users, Calendar, LogOut, X,
+  Compass, CreditCard, User, Menu, AlertCircle
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 
-export default function DashboardPage({ onNavigate, trips, setTrips }) {
+export default function DashboardPage({ onNavigate, trips }) {
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isEmptyState, setIsEmptyState] = useState(false);

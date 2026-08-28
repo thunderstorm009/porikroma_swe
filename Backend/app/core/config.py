@@ -25,6 +25,8 @@ class Settings:
     supabase_jwks_url: str | None
     supabase_jwt_secret: str | None
     openai_api_key: str | None
+    groq_api_key: str | None
+    groq_model: str
     google_maps_api_key: str | None
     google_places_api_key: str | None
     openweather_api_key: str | None
@@ -50,6 +52,8 @@ def get_settings() -> Settings:
         supabase_jwks_url=os.getenv("SUPABASE_JWKS_URL"),
         supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
+        groq_api_key=os.getenv("GROQ_API_KEY"),
+        groq_model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY"),
         google_places_api_key=os.getenv("GOOGLE_PLACES_API_KEY"),
         openweather_api_key=os.getenv("OPENWEATHER_API_KEY"),
