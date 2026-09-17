@@ -34,7 +34,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
   const [expenseForm, setExpenseForm] = useState({ description: '', category: 'Food', amount: '', paidBy: 'Sarah' });
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [budgetAdvice, setBudgetAdvice] = useState(null);
-  const [messages, setMessages] = useState(MOCK_CHAT_MESSAGES);
+  const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [emergencyCategory, setEmergencyCategory] = useState('All');
@@ -66,22 +66,39 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
       });
     }
 
+    // Load chat history
+    chatService.getMessages(trip.id)
+      .then(history => { if (active) setMessages(history); })
+      .catch(err => console.error('Failed to load chat history:', err));
+
+    let localWs = null;
+
     // Connect WS
     chatService.connect(trip.id, (data) => {
-      setMessages((current) => [...current, {
-        id: data.id || Date.now(),
-        user: data.sender?.full_name || data.sender?.username || 'User',
-        initials: (data.sender?.full_name || data.sender?.username || 'U')[0].toUpperCase(),
-        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-        message: data.text,
-        color: 'blue'
-      }]);
+      setMessages((current) => {
+        // Prevent duplicate appending from strict mode multiple WS
+        if (data.id && current.some(m => m.id === data.id)) return current;
+        return [...current, {
+          id: data.id || Date.now(),
+          user: data.sender?.full_name || data.sender?.username || 'User',
+          initials: (data.sender?.full_name || data.sender?.username || 'U')[0].toUpperCase(),
+          time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+          message: data.content || data.text,
+          color: 'blue'
+        }];
+      });
     }).then(ws => {
-      wsRef.current = ws;
+      if (!active) {
+        ws.close();
+      } else {
+        localWs = ws;
+        wsRef.current = ws;
+      }
     }).catch(err => console.error('Failed to connect to chat WS:', err));
 
     return () => { 
       active = false; 
+      if (localWs) localWs.close();
       if (wsRef.current) wsRef.current.close();
     };
   }, [trip?.id, useMock]);
@@ -140,7 +157,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
 
     {activeTab === 'overview' && <div className="travel-grid" style={{ gap: 17 }}>
       <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{trip.members?.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weather[0]?.temp}°C</strong><span>{weather[0]?.label}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summary.intensity}</strong><span>{summary.activities} recommended activities</span></div></div>
-      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summary.headline}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summary.budget], ['Weather', summary.weather], ['Intensity', summary.intensity]].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{summary.insights.map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weather.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day.split(',')[0]}</small><small style={{ color: day.rain > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
+      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summary.headline}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summary.budget], ['Weather', summary.weather], ['Intensity', summary.intensity]].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{(summary.insights || []).map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weather.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day.split(',')[0]}</small><small style={{ color: day.rain > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
       <div className="travel-grid travel-grid-2">
         <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div><span className="travel-pill green">94% match</span></div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.</p></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 17 }}>
@@ -183,7 +200,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
 
     {activeTab === 'itinerary' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itinerary.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{day.items.map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destination.name}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
 
-    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Mock map ready for Places API</span></div><TravelMap location={destination} height="570px" /></div>}
+    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Live Places API</span></div><TravelMap location={destination} itinerary={itinerary.flatMap(day => day.items || [])} height="570px" /></div>}
 
     {activeTab === 'budget' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared budget</h2><p>Track expenses now; settle with the future backend later.</p></div><button className="travel-button" onClick={() => { setEditingExpenseId(null); setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: 'Sarah' }); setShowExpenseForm(!showExpenseForm); }}><Plus size={14} /> Add expense</button></div><div className="travel-panel travel-panel-pad"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}><div><span className="travel-stat-label">Spent so far</span><strong style={{ display: 'block', font: '700 28px var(--font-mono)', marginTop: 9 }}>৳{totalExpenses.toLocaleString()}</strong></div><span className="travel-pill green">{Math.round((totalExpenses / (budget || 1)) * 100)}% allocated</span></div><div className="travel-progress" style={{ marginTop: 16 }}><span style={{ width: `${Math.min(100, (totalExpenses / (budget || 1)) * 100)}%` }} /></div>{showExpenseForm && <form onSubmit={saveExpense} className="travel-form-grid" style={{ marginTop: 20, borderTop: '1px solid var(--travel-border)', paddingTop: 18 }}><div className="travel-field"><label htmlFor="expense-description">Description</label><input id="expense-description" className="travel-input" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="e.g. Beach dinner" required /></div><div className="travel-field"><label htmlFor="expense-amount">Amount (৳)</label><input id="expense-amount" type="number" className="travel-input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="1200" required /></div><div className="travel-field"><label htmlFor="expense-category">Category</label><select id="expense-category" className="travel-select" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Food</option><option>Lodging</option><option>Transport</option><option>Activity</option><option>Shopping</option><option>Emergency</option><option>Other</option></select></div><div className="travel-field"><label htmlFor="expense-paid-by">Paid by</label><select id="expense-paid-by" className="travel-select" value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}><option>Sarah</option><option>Abrar</option><option>Huzaifa</option><option>Faizul</option><option>Munzeer</option></select></div><button className="travel-button" type="submit">{editingExpenseId ? 'Update expense' : 'Save expense'}</button></form>}</div><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><span className="travel-card-kicker">Expense ledger</span>{expenses.map((expense) => <div className="travel-expense-row" key={expense.id}><span><strong>{expense.description}</strong><small>{expense.category} · paid by {typeof expense.paidBy === 'object' ? expense.paidBy?.name : expense.paidBy}</small></span><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="travel-expense-amount">৳{Number(expense.amount).toLocaleString()}</span><button className="travel-link" style={{ padding: 0, fontSize: 10 }} onClick={() => editExpense(expense)}>Edit</button><button className="travel-remove" style={{ padding: 0 }} onClick={() => deleteExpense(expense.id)}>Delete</button></span></div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Optimize budget</span><h3>Keep ৳{Math.max(0, budget - totalExpenses).toLocaleString()} flexible.</h3><p>Ask the mock planner to find savings while protecting the parts of your trip that matter most.</p><button className="travel-button" style={{ marginTop: 15 }} onClick={optimizeBudget}><Sparkles size={14} /> Optimize budget</button>{budgetAdvice && <div style={{ marginTop: 20 }}><div className="travel-pill green">Potential savings: ৳{budgetAdvice.savings.toLocaleString()}</div><ul className="travel-insight-list">{budgetAdvice.recommendations.map((item) => <li key={item.label}>{item.label} <strong style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>− ৳{item.amount}</strong></li>)}</ul><button className="travel-link" style={{ padding: 0, marginTop: 12 }} onClick={() => setBudgetAdvice(null)}>Applied to mock state ✓</button></div>}</div></div>}
 

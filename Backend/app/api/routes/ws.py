@@ -59,10 +59,17 @@ async def websocket_chat_endpoint(
         while True:
             data = await websocket.receive_text()
             
+            import json
+            try:
+                payload = json.loads(data)
+                content = payload.get("text", "")
+            except json.JSONDecodeError:
+                content = data
+
             msg = TripMessage(
                 trip_id=group_id,
                 sender_id=user_id,
-                content=data
+                content=content
             )
             db.add(msg)
             db.commit()

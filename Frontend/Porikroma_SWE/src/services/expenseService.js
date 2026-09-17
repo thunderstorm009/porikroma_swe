@@ -23,6 +23,7 @@ const mapExpense = (item) => ({
 });
 
 export const expenseService = {
+  listPersonal: () => useMock ? Promise.resolve([]) : apiClient.get('/api/v1/users/me/expenses').then((response) => (response.data || []).map(mapExpense)),
   list: (tripId) => useMock ? Promise.resolve([]) : apiClient.get(`/api/v1/trips/${tripId}/expenses`).then((response) => (response.data || []).map(mapExpense)),
   create: (tripId, input) => useMock ? Promise.resolve({ ...input, id: `mock-${Date.now()}` }) : apiClient.post(`/api/v1/trips/${tripId}/expenses`, {
     category: toApiCategory[input.category] || 'other',

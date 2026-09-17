@@ -5,8 +5,10 @@ import {
   Compass, CreditCard, User, LogOut, ArrowRight, Loader2, Sparkles
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function TripDetailPage({ onNavigate, trip, onUpdateTrip }) {
+  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -250,16 +252,16 @@ export default function TripDetailPage({ onNavigate, trip, onUpdateTrip }) {
         <div className="border-t border-border-custom pt-6 px-6 space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              SJ
+              {(profile?.full_name || user?.user_metadata?.full_name || user?.email || 'T')[0].toUpperCase()}
             </div>
             <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">Sarah Jenkins</span>
+              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
               <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
             </div>
           </div>
 
           <button
-            onClick={() => onNavigate('landing')}
+            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
           >
             <LogOut size={18} />

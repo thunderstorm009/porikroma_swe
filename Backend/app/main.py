@@ -29,6 +29,8 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
+from app.api.routes import users_ext
+app.include_router(users_ext.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
 app.include_router(tours.router, prefix="/api/v1")

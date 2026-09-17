@@ -6,7 +6,7 @@ const markerIcons = { Hotel: '🏨', Attraction: '📍', Restaurant: '🍴', Hos
 const defaultCategories = ['All', 'Hotel', 'Attraction', 'Restaurant', 'Emergency'];
 const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-export default function TravelMap({ location, selectable = false, emergencyLocations = null, mapCategories = defaultCategories, onSelectLocation, height = '360px' }) {
+export default function TravelMap({ location, itinerary = [], selectable = false, emergencyLocations = null, mapCategories = defaultCategories, onSelectLocation, height = '360px' }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
   const [category, setCategory] = useState('All');
@@ -109,7 +109,35 @@ export default function TravelMap({ location, selectable = false, emergencyLocat
 
       markersRef.current.push(marker);
     });
-  }, [scriptLoaded, location, results]);
+
+    // Place itinerary markers
+    if (itinerary && Array.isArray(itinerary)) {
+      itinerary.forEach((item, i) => {
+        const mLat = parseFloat(item.latitude);
+        const mLng = parseFloat(item.longitude);
+        if (isNaN(mLat) || isNaN(mLng)) return;
+        const marker = new window.google.maps.Marker({
+          position: { lat: mLat, lng: mLng },
+          map: mapInstance.current,
+          title: item.location_name || item.title || `Stop ${i+1}`,
+          icon: {
+            url: 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png'
+          },
+          label: {
+            text: (i+1).toString(),
+            color: 'black',
+            fontWeight: 'bold'
+          }
+        });
+
+        marker.addListener('click', () => {
+          choose({ ...item, name: item.location_name || item.title, markerCategory: 'Itinerary' });
+        });
+
+        markersRef.current.push(marker);
+      });
+    }
+  }, [scriptLoaded, location, results, itinerary]);
 
   const search = async (value) => {
     setQuery(value);

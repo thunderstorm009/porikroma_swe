@@ -37,7 +37,7 @@ export default function CommunityPage({ onNavigate, theme, onToggleTheme, initia
   }, [query]);
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    if (questions.length === 0) setLoading(true);
     Promise.all([forumService.getQuestions({ search: debouncedQuery, category, sort }), forumService.getUsers()])
       .then(([loadedQuestions, loadedUsers]) => {
         if (!active) return;
@@ -54,6 +54,7 @@ export default function CommunityPage({ onNavigate, theme, onToggleTheme, initia
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, category, sort, version]);
   const userById = useMemo(() => Object.fromEntries(users.map((user) => [user.id, user])), [users]);
   const openQuestion = (id) => onNavigate('question-detail', id);

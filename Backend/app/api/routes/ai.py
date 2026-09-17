@@ -86,7 +86,19 @@ def optimize_budget(payload: BudgetOptimizationRequest, current_user: Authentica
     spent = Decimal(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.trip_id == trip.id)) or 0)
     remaining = Decimal(trip.budget or 0) - spent
     potential = max(Decimal("0"), remaining * Decimal("0.10"))
-    result = BudgetOptimizationResponse(current_status="over budget" if remaining < 0 else "within budget", potential_savings=potential.quantize(Decimal("0.01")), recommendations=["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."])
+    
+    prompt = f"Trip to {trip.destination.name if trip.destination else trip.title}. Total budget: {trip.budget}. Spent so far: {spent}. Suggest 2 realistic budget optimization strategies to save money."
+    try:
+        from app.services.ai_service import generate_text
+        import json
+        system = "Return ONLY valid JSON matching exactly: {\"recommendations\":[\"...\", \"...\"]}"
+        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
+        result_dict = json.loads(raw)
+        recommendations = result_dict.get("recommendations", ["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."])
+    except Exception:
+        recommendations = ["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."]
+        
+    result = BudgetOptimizationResponse(current_status="over budget" if remaining < 0 else "within budget", potential_savings=potential.quantize(Decimal("0.01")), recommendations=recommendations)
     return {"data": result}
 
 
@@ -94,13 +106,27 @@ def optimize_budget(payload: BudgetOptimizationRequest, current_user: Authentica
 def trip_summary(payload: BudgetOptimizationRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
     trip, _ = require_trip_access(db, payload.trip_id, current_user.id)
     spent = Decimal(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.trip_id == trip.id)) or 0)
-    text = f"{trip.title}: {trip.travel_type} travel with budget {trip.budget}, {spent} spent, and {len(trip.itinerary_items)} itinerary items. Verify weather and local availability before departure."
+    
+    prompt = f"Summarize this trip: {trip.title}, {trip.travel_type} style, budget: {trip.budget}, spent: {spent}. Itinerary has {len(trip.itinerary_items)} items. Please provide a headline, budget string, weather string, intensity string, and a list of 3 short insight strings."
+    
+    try:
+        from app.services.ai_service import generate_text
+        import json
+        system = "Return ONLY valid JSON matching exactly: {\"headline\":\"...\", \"budget\":\"...\", \"weather\":\"...\", \"intensity\":\"...\", \"insights\":[\"...\"]}"
+        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
+        result = json.loads(raw)
+        text_summary = result.get("headline", f"{trip.title} summary")
+        full_result = result
+    except Exception:
+        text_summary = f"{trip.title}: {trip.travel_type} travel with budget {trip.budget}, {spent} spent."
+        full_result = {"headline": text_summary, "budget": f"{spent} / {trip.budget}", "weather": "Check local forecast", "intensity": "Moderate", "insights": ["Keep one flexible weather window.", "Track expenses closely."]}
+        
     summary = db.scalar(select(AITripSummary).where(AITripSummary.trip_id == trip.id))
     if summary:
-        summary.summary = text
+        summary.summary = text_summary
         db.commit()
     else:
-        summary = AITripSummary(trip_id=trip.id, summary=text)
+        summary = AITripSummary(trip_id=trip.id, summary=text_summary)
         db.add(summary)
         try:
             db.commit()
@@ -108,9 +134,9 @@ def trip_summary(payload: BudgetOptimizationRequest, current_user: Authenticated
             db.rollback()
             summary = db.scalar(select(AITripSummary).where(AITripSummary.trip_id == trip.id))
             if summary:
-                summary.summary = text
+                summary.summary = text_summary
                 db.commit()
-    return {"data": {"summary": text, "budget_status": "over budget" if spent > trip.budget else "within budget", "itinerary_items": len(trip.itinerary_items), "recommendations": ["Keep one flexible weather window."]}}
+    return {"data": full_result}
 
 
 @router.post("/hotel-recommendations", summary="Recommend hotels from stored data")
@@ -133,7 +159,18 @@ def ai_forum_answer(payload: ForumAIRequest, profile: Profile = Depends(get_curr
     question = db.get(ForumQuestion, payload.question_id)
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    answer = ForumAnswer(question_id=question.id, author_id=profile.id, is_ai_generated=True, content=f"AI-generated guidance: consider the destination, timing, budget, and current local conditions for '{question.title}'. Verify this advice with recent traveler reports.")
+        
+    answers = db.scalars(select(ForumAnswer).where(ForumAnswer.question_id == question.id)).all()
+    context_text = "\n".join([f"- {a.content}" for a in answers])
+    prompt = f"Question: {question.title}\n{question.content}\nDestination: {question.destination.name if question.destination else 'Unknown'}\n\nExisting answers:\n{context_text}\n\nPlease provide a helpful, concise AI answer to this travel question."
+    
+    try:
+        from app.services.ai_service import generate_text
+        ai_content = generate_text(prompt, system="You are an expert travel assistant. Provide a practical and safe answer.").strip()
+    except Exception:
+        ai_content = f"AI-generated guidance: consider the destination, timing, budget, and current local conditions for '{question.title}'. Verify this advice with recent traveler reports."
+        
+    answer = ForumAnswer(question_id=question.id, author_id=profile.id, is_ai_generated=True, content=ai_content)
     db.add(answer)
     db.commit()
     db.refresh(answer)
@@ -147,7 +184,26 @@ def forum_summary(question_id: UUID, db: Session):
     answers = db.scalars(select(ForumAnswer).where(ForumAnswer.question_id == question_id)).all()
     if len(answers) < 2:
         return CommunityConsensus(response_count=len(answers), summary="Not enough community responses to determine consensus.", recommendations=[], disagreements=[], warnings=[])
-    result = CommunityConsensus(response_count=len(answers), summary=f"{len(answers)} community responses mention checking current local conditions and grouping nearby activities.", recommendations=["Compare recent answers.", "Confirm prices and conditions locally."], disagreements=[], warnings=["This is an AI-generated summary, not a guarantee."])
+        
+    context_text = "\n".join([f"- {a.content}" for a in answers])
+    prompt = f"Question: {question.title}\n{question.content}\n\nAnswers:\n{context_text}\n\nSummarize the community consensus. Provide a summary string, a list of 3 recommendations, a list of disagreements (if any), and a list of warnings (if any)."
+    
+    try:
+        from app.services.ai_service import generate_text
+        import json
+        system = "Return ONLY valid JSON matching exactly: {\"summary\":\"...\", \"recommendations\":[\"...\"], \"disagreements\":[\"...\"], \"warnings\":[\"...\"]}"
+        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
+        result_dict = json.loads(raw)
+        result = CommunityConsensus(
+            response_count=len(answers), 
+            summary=result_dict.get("summary", "Community consensus analyzed."), 
+            recommendations=result_dict.get("recommendations", []), 
+            disagreements=result_dict.get("disagreements", []), 
+            warnings=result_dict.get("warnings", ["This is an AI-generated summary, not a guarantee."])
+        )
+    except Exception:
+        result = CommunityConsensus(response_count=len(answers), summary=f"{len(answers)} community responses mention checking current local conditions and grouping nearby activities.", recommendations=["Compare recent answers.", "Confirm prices and conditions locally."], disagreements=[], warnings=["This is an AI-generated summary, not a guarantee."])
+        
     saved = db.scalar(select(AIForumSummary).where(AIForumSummary.question_id == question_id))
     if saved:
         saved.summary = result.summary

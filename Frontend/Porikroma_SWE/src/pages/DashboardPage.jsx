@@ -5,8 +5,10 @@ import {
   Compass, CreditCard, User, Menu, AlertCircle
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function DashboardPage({ onNavigate, trips }) {
+  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isEmptyState, setIsEmptyState] = useState(false);
@@ -159,16 +161,16 @@ export default function DashboardPage({ onNavigate, trips }) {
 
           <div className="flex items-center gap-3 pt-2 border-t border-border-custom/50">
             <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              SJ
+              {(profile?.full_name || user?.user_metadata?.full_name || user?.email || 'T')[0].toUpperCase()}
             </div>
             <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">Sarah Jenkins</span>
+              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
               <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
             </div>
           </div>
 
           <button
-            onClick={() => onNavigate('landing')}
+            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
           >
             <LogOut size={18} />
@@ -185,7 +187,7 @@ export default function DashboardPage({ onNavigate, trips }) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border-custom pb-6">
             <div className="text-left">
               <h1 className="text-3xl font-serif text-navy">
-                Welcome back, Sarah
+                Welcome back, {profile?.full_name?.split(' ')[0] || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Traveler'}
               </h1>
               <p className="text-sm text-navy/60 font-normal mt-1 leading-none">
                 Your corridor parameters and matching schedules are active.

@@ -4,6 +4,7 @@ import {
   Search, Plus, X, Bed, Car, Ticket, Check, ShieldCheck, LogOut, Map
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import { useAuth } from '../contexts/AuthContext';
 import { BANGLADESH_HOTELS, BANGLADESH_VEHICLES, BANGLADESH_TICKETS } from '../mockData';
 
 // Pre-filtered ACTIVE inventory pool (from Bangladesh inventory database)
@@ -14,6 +15,7 @@ const ACTIVE_INVENTORY = {
 };
 
 export default function AuthorTourPlanPage({ onNavigate, trip = null, onSaveAgentPlan }) {
+  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState('Hotels');
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,7 +25,7 @@ export default function AuthorTourPlanPage({ onNavigate, trip = null, onSaveAgen
     id: 1,
     destination: "Cox's Bazar Sea Beach & Inani",
     dates: "06 OCT - 12 OCT 2026",
-    travelerName: "Sarah Jenkins",
+    travelerName: profile?.full_name || "Traveler",
     travelerAvatar: "S",
     travelersCount: 3,
     budget: 25000.00
@@ -171,7 +173,7 @@ export default function AuthorTourPlanPage({ onNavigate, trip = null, onSaveAgen
                     <div className="w-5 h-5 rounded-full bg-teal-primary/20 text-teal-primary flex items-center justify-center font-serif text-[10px] font-bold">
                       {activeTrip.travelerAvatar || 'S'}
                     </div>
-                    <span>{activeTrip.travelerName || 'Sarah Jenkins'}</span>
+                    <span>{activeTrip.travelerName || profile?.full_name || 'Traveler'}</span>
                   </div>
                 </div>
               </div>

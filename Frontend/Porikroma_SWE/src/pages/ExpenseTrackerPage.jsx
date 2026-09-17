@@ -85,19 +85,31 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
     let active = true;
     setLoadingExpenses(true);
     setExpenseError('');
-    Promise.all(trips.map((trip) => expenseService.list(trip.id).then((items) => ({ tripId: trip.id, items }))))
-      .then((results) => {
+    
+    // Fetch personal expenses
+    expenseService.listPersonal()
+      .then(personalItems => {
         if (!active) return;
-        const nextMap = Object.fromEntries(results.map(({ tripId, items }) => [tripId, items]));
-        setGroupExpensesMap(nextMap);
-        setPersonalExpenses(results.flatMap(({ items }) => items).filter((item) => item.userId === user.id));
+        setPersonalExpenses(personalItems);
       })
-      .catch((error) => {
-        if (active) setExpenseError(error.message || 'Unable to load expenses from the server.');
-      })
-      .finally(() => { if (active) setLoadingExpenses(false); });
+      .catch(console.error);
+
+    // Fetch ONLY the currently selected trip's expenses (if any)
+    if (selectedTripId) {
+      expenseService.list(selectedTripId)
+        .then(items => {
+          if (!active) return;
+          setGroupExpensesMap(prev => ({ ...prev, [selectedTripId]: items }));
+        })
+        .catch((error) => {
+          if (active) setExpenseError(error.message || 'Unable to load expenses from the server.');
+        })
+        .finally(() => { if (active) setLoadingExpenses(false); });
+    } else {
+      setLoadingExpenses(false);
+    }
     return () => { active = false; };
-  }, [trips, tripsLoading, user?.id, useMock]);
+  }, [selectedTripId, user?.id, useMock]); // Removed trips dependency to avoid full reload on any trip update
 
   // Reset form when tab or trip changes
   useEffect(() => {

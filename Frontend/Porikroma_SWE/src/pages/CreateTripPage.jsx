@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Check, ArrowRight, ArrowLeft, Globe, Users, User, Calendar, MapPin, Loader2 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import { useAuth } from '../contexts/AuthContext';
 import { BANGLADESH_CITIES } from '../mockData';
 
 export default function CreateTripPage({ onNavigate, onCreateTrip }) {
+  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward
@@ -141,10 +143,10 @@ export default function CreateTripPage({ onNavigate, onCreateTrip }) {
         <div className="border-t border-border-custom pt-6 px-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-teal-primary/10 text-teal-primary font-bold flex items-center justify-center font-serif text-sm">
-              SJ
+              {(profile?.full_name || user?.user_metadata?.full_name || user?.email || 'T')[0].toUpperCase()}
             </div>
             <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">Sarah Jenkins</span>
+              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
               <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
             </div>
           </div>

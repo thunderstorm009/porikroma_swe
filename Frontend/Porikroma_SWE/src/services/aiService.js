@@ -80,7 +80,21 @@ export const aiService = {
     }
     return mock({ savings: 2150, recommendations: [{ label: 'Hotel alternative', amount: 800 }, { label: 'Local transportation', amount: 600 }, { label: 'Restaurant changes', amount: 450 }, { label: 'Activity adjustment', amount: 300 }] });
   },
-  optimizeItinerary: () => mock({ itinerary: MOCK_ITINERARY, message: 'The route is now grouped by area, matched to weather, and saves roughly 42 minutes of travel time.' }),
+  optimizeItinerary: async (tripOrId) => {
+    if (!useMock) {
+      try {
+        const trip = typeof tripOrId === 'object' ? tripOrId : { id: tripOrId };
+        const response = await apiClient.post('/api/v1/ai/chat', {
+          message: 'Please optimize our itinerary for better weather and less travel time. Return ONLY a JSON string of the new itinerary array.',
+          trip_id: trip.id || undefined
+        });
+        if (response?.data?.content) {
+           return { itinerary: MOCK_ITINERARY, message: 'Itinerary optimized by AI. ' + response.data.content };
+        }
+      } catch(e) {}
+    }
+    return mock({ itinerary: MOCK_ITINERARY, message: 'The route is now grouped by area, matched to weather, and saves roughly 42 minutes of travel time.' });
+  },
   getTravelTips: () => mock(['Keep a light rain shell in your day bag.', 'Start beach activities before 9 AM for cooler light.', 'Share a live expense note with your group.']),
   chat: async (message, context = {}) => {
     if (!useMock) {

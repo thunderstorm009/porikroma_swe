@@ -5,8 +5,10 @@ import {
   X, Check, Loader2, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function BrowseGroupsPage({ onNavigate }) {
+  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -211,13 +213,13 @@ export default function BrowseGroupsPage({ onNavigate }) {
               SJ
             </div>
             <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">Sarah Jenkins</span>
+              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
               <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
             </div>
           </div>
 
           <button
-            onClick={() => onNavigate('landing')}
+            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
           >
             <LogOut size={18} />
@@ -285,7 +287,23 @@ export default function BrowseGroupsPage({ onNavigate }) {
           {/* Results Area */}
           <div className="flex-grow">
             <AnimatePresence mode="wait">
-              {filteredTrips.length === 0 ? (
+              {isLoading ? (
+                // LOADING STATE
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="border border-dashed border-border-custom rounded-xl p-16 bg-white flex flex-col items-center justify-center text-center space-y-5"
+                >
+                  <div className="w-14 h-14 rounded-full bg-fog flex items-center justify-center text-navy/35">
+                    <Loader2 className="animate-spin" size={22} />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-serif font-medium text-navy">Loading corridors...</h3>
+                  </div>
+                </motion.div>
+              ) : filteredTrips.length === 0 ? (
                 // EMPTY STATE
                 <motion.div
                   key="empty"
