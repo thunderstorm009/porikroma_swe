@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Google Places boundary; database seed data remains the initial provider."""
 
 from app.core.config import get_settings

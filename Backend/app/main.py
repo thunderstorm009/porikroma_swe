@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, Request
@@ -22,8 +23,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/api/v1")
@@ -66,7 +67,8 @@ def health():
             "test": result,
         }
 
-    except Exception:
+    except Exception as e:
+        logger.exception("Database connectivity check failed")
         return {
             "status": "error",
             "database": "not connected",

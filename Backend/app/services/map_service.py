@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Server-side map links and provider boundary."""
 
 from urllib.parse import urlencode

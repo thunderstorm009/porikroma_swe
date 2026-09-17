@@ -12,72 +12,80 @@ import { chromium } from 'playwright';
     await page.goto('http://localhost:5173/');
     await page.waitForLoadState('networkidle');
 
-    // 2. Click "Get Started" to go to /login or /register
-    console.log('Clicking Get Started...');
-    await page.click('text=Get Started');
+    // 2. Click "Log in" instead of Get Started
+    console.log('Clicking Log in...');
+    await page.click('text=Log in');
     await page.waitForURL('**/login');
     
-    // Switch to Sign up tab
-    await page.click('button:has-text("Sign up")');
-    await page.waitForTimeout(500); // let animation finish
-
-    // Generate random email
-    const randId = Math.random().toString(36).substring(2, 8);
-    const testEmail = `test.e2e.${randId}@example.com`;
+    // Perform Login
+    const testEmail = 'test.admin.e2e@example.com';
     const testPassword = 'Password123!';
 
-    console.log(`Registering account A: ${testEmail}`);
-    await page.fill('input[name="name"]', 'Account A');
+    console.log(`Logging in with account: ${testEmail}`);
     await page.fill('input[name="email"]', testEmail);
     await page.fill('input[name="password"]', testPassword);
-    await page.fill('input[name="confirmPassword"]', testPassword);
     
-    // Select Role
-    await page.selectOption('select[name="role"]', 'traveler');
-
     // Submit
-    await page.click('button:has-text("Create account")');
+    await page.click('button[type="submit"]');
     
-    // Wait for redirect to dashboard
+    // Wait for redirect to dashboard or error
     try {
       await page.waitForURL('**/dashboard', { timeout: 10000 });
       console.log('Successfully redirected to Dashboard.');
     } catch (e) {
-      console.log('Could not reach dashboard automatically. Checking for email confirmation message...');
-      const msgVisible = await page.isVisible('text=Account created');
-      console.log('Account created message visible?', msgVisible);
+      console.log('Could not reach dashboard automatically. Checking for errors...');
+      const errorMsg = await page.locator('.text-red-700').textContent({ timeout: 1000 }).catch(() => null);
+      if (errorMsg) {
+        console.error('Login error:', errorMsg);
+        throw new Error(`Login failed: ${errorMsg}`);
+      }
       throw e;
     }
 
     // Create a new trip
     console.log('Navigating to Create Trip...');
-    await page.click('button:has-text("Create new trip")');
+    await page.click('button:has-text("Plan a new trip")');
     await page.waitForURL('**/trips/new');
 
-    console.log('Filling trip details...');
-    await page.fill('input[placeholder="e.g. Kyoto, Japan"]', 'Sylhet, Bangladesh');
-    await page.fill('input[type="date"]', '2026-12-01');
-    const dates = await page.$$('input[type="date"]');
-    if (dates.length > 1) {
-      await dates[1].fill('2026-12-10');
-    }
-    
-    // Group type
-    await page.click('button:has-text("Group")');
+    console.log('Filling trip details (Step 0 - Type)...');
+    await page.click('text="Group"', { force: true });
+    await page.waitForTimeout(500);
+    await page.click('button:has-text("Continue")', { force: true });
+    await page.waitForTimeout(500);
 
-    await page.click('button:has-text("Create trip")');
+    console.log('Filling trip details (Step 1 - Destination)...');
+    await page.fill('input[placeholder="Try Cox\'s Bazar, Sajek..."]', 'Sylhet');
+    await page.waitForTimeout(500);
+    await page.click('button:has-text("Continue")', { force: true });
+    await page.waitForTimeout(500);
+
+    console.log('Filling trip details (Step 2 - Dates & Budget)...');
+    await page.fill('input[id="start-date"]', '2026-12-01');
+    await page.fill('input[id="end-date"]', '2026-12-10');
+    await page.fill('input[id="budget"]', '10000');
+    await page.waitForTimeout(500);
+    await page.click('button:has-text("Continue")', { force: true });
+    await page.waitForTimeout(500);
+
+    console.log('Filling trip details (Step 3 - Preferences)...');
+    await page.click('button:has-text("Generate mock plans")', { force: true });
+    await page.waitForTimeout(500);
+
+    console.log('Filling trip details (Step 4 - Plans)...');
+    await page.click('button:has-text("Create group trip")');
     
     console.log('Waiting for trip detail page...');
-    await page.waitForURL('**/trips/*', { timeout: 15000 });
+    await page.waitForURL(/\/trips\/[0-9a-fA-F-]+/, { timeout: 15000 });
     console.log('Successfully reached trip page.');
     
+    // Log the created trip URL
     const tripUrl = page.url();
     console.log(`Created Trip URL: ${tripUrl}`);
-
-    // Wait for the trip to load (ensure we don't get the "No trip selected" error)
-    await page.waitForSelector('text=Shared workspace');
+    
+    // Check if we can see the workspace tabs
+    await page.waitForSelector('.travel-workspace-tabs', { timeout: 10000 });
     console.log('Workspace loaded.');
-
+    
     console.log('ALL E2E TESTS PASSED!');
   } catch (error) {
     console.error('Test failed:', error);

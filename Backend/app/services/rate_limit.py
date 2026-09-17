@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Small in-process limiter abstraction for expensive endpoints.
 
 Deployments with multiple workers can replace this implementation with a

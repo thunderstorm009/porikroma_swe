@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sqlalchemy.exc import IntegrityError
 
 from decimal import Decimal
 from uuid import UUID
@@ -97,10 +98,18 @@ def trip_summary(payload: BudgetOptimizationRequest, current_user: Authenticated
     summary = db.scalar(select(AITripSummary).where(AITripSummary.trip_id == trip.id))
     if summary:
         summary.summary = text
+        db.commit()
     else:
         summary = AITripSummary(trip_id=trip.id, summary=text)
         db.add(summary)
-    db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            summary = db.scalar(select(AITripSummary).where(AITripSummary.trip_id == trip.id))
+            if summary:
+                summary.summary = text
+                db.commit()
     return {"data": {"summary": text, "budget_status": "over budget" if spent > trip.budget else "within budget", "itinerary_items": len(trip.itinerary_items), "recommendations": ["Keep one flexible weather window."]}}
 
 

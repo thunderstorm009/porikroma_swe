@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Dict, List
 import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
@@ -34,7 +35,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-@router.websocket("/groups/{group_id}/chat")
+@router.websocket("/trips/{group_id}/chat")
 async def websocket_chat_endpoint(
     websocket: WebSocket,
     group_id: uuid.UUID,

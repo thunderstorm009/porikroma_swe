@@ -1,3 +1,4 @@
+from __future__ import annotations
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 

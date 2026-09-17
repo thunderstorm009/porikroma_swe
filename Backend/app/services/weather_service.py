@@ -1,3 +1,4 @@
+from __future__ import annotations
 """OpenWeather integration kept outside route handlers."""
 
 from datetime import date

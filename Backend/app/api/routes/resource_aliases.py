@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Canonical resource paths retained alongside nested trip paths."""
 
 from uuid import UUID

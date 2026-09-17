@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Distance calculation for database-backed emergency locations."""
 
 import math

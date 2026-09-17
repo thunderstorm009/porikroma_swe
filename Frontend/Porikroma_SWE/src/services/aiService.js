@@ -24,9 +24,11 @@ export const aiService = {
     if (!useMock && data?.destination) {
       try {
         const response = await apiClient.post('/api/v1/ai/trip-plan', {
-          destination: data.destination,
+          destination: typeof data.destination === 'object' ? data.destination.name : data.destination,
           start_date: data.start_date || data.startDate || '2026-09-01',
           end_date: data.end_date || data.endDate || '2026-09-05',
+          traveler_count: data.members ? data.members.length : (data.traveler_count || 1),
+          travel_type: data.type === 'Group' ? 'group' : 'solo',
           budget: Number(data.budget || 30000),
           interests: data.interests || ['sightseeing'],
           travel_style: data.travel_style || data.travelStyle || 'balanced'

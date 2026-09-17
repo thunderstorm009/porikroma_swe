@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Cloudinary configuration boundary for future signed uploads."""
 
 from app.core.config import get_settings

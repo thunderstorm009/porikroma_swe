@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 async function getCurrentSession() {
   const { data, error } = await supabase.auth.getSession();
@@ -28,7 +28,15 @@ async function requestWithSession(endpoint, options, session) {
 
 async function fetchWithAuth(endpoint, options = {}) {
   let session = await getCurrentSession();
-  let response = await requestWithSession(endpoint, options, session);
+  let response;
+  try {
+    response = await requestWithSession(endpoint, options, session);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to Porikroma server.');
+    }
+    throw error;
+  }
 
   // A token can expire between getSession() and fetch(). Refresh once and retry
   // with the new Supabase-managed token; never reuse a manually cached token.
@@ -36,12 +44,26 @@ async function fetchWithAuth(endpoint, options = {}) {
     const refreshed = await supabase.auth.refreshSession();
     if (!refreshed.error && refreshed.data.session?.access_token && refreshed.data.session.access_token !== session.access_token) {
       session = refreshed.data.session;
-      response = await requestWithSession(endpoint, options, session);
+      try {
+        response = await requestWithSession(endpoint, options, session);
+      } catch (error) {
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          throw new Error('Cannot connect to Porikroma server.');
+        }
+        throw error;
+      }
     }
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    
+    if (response.status === 401) {
+      throw new Error('Your session has expired. Please log in again.');
+    } else if (response.status >= 500) {
+      throw new Error('Server error. Please try again.');
+    }
+    
     throw {
       status: response.status,
       message: errorData.detail || 'An error occurred',

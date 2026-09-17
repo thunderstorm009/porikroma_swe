@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Shared ownership and membership checks for protected trip resources."""
 
 from uuid import UUID
