@@ -1,6 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'dummy_key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error(
+    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY. Set them in your .env file (see .env.example).'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);

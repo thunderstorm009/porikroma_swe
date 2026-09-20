@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Edit2, Trash2, X, Bed, Car, Ticket,
   LogOut, Shield
@@ -8,7 +8,6 @@ import LogoIcon from '../components/LogoIcon';
 import { BANGLADESH_HOTELS, BANGLADESH_VEHICLES, BANGLADESH_TICKETS } from '../mockData';
 
 export default function AdminInventoryPage({ onNavigate }) {
-  const shouldReduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState('Hotels'); // 'Hotels' | 'Vehicles' | 'Tickets'
   const [searchQuery, setSearchQuery] = useState('');
 

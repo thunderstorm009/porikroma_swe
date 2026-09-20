@@ -30,11 +30,17 @@ export default function BrowseGroupsPage({ onNavigate }) {
   // Bangladesh open group trips dataset
   const [trips, setTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setIsLoading(true);
+    setLoadError(null);
     import('../services/apiClient').then(({ apiClient }) => {
       apiClient.get('/api/v1/trips', { travel_type: 'group', discover: true })
         .then(response => {
+          if (!active) return;
           const items = response.data?.items || [];
           setTrips(items.map(trip => ({
             ...trip,
@@ -51,10 +57,15 @@ export default function BrowseGroupsPage({ onNavigate }) {
             question: trip.description || 'Why would you like to join our group trip?'
           })));
         })
-        .catch(err => console.error('Failed to load group trips', err))
-        .finally(() => setIsLoading(false));
+        .catch(err => {
+          if (!active) return;
+          console.error('Failed to load group trips', err);
+          setLoadError('Unable to load group trips. Please try again.');
+        })
+        .finally(() => { if (active) setIsLoading(false); });
     });
-  }, []);
+    return () => { active = false; };
+  }, [reloadToken]);
 
   // Sidebar Menu Items
   const menuItems = [
@@ -302,6 +313,25 @@ export default function BrowseGroupsPage({ onNavigate }) {
                   <div className="space-y-1">
                     <h3 className="text-lg font-serif font-medium text-navy">Loading corridors...</h3>
                   </div>
+                </motion.div>
+              ) : loadError ? (
+                // ERROR STATE
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="border border-dashed border-border-custom rounded-xl p-16 bg-white flex flex-col items-center justify-center text-center space-y-5"
+                >
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-serif font-medium text-navy">{loadError}</h3>
+                  </div>
+                  <button
+                    onClick={() => setReloadToken((n) => n + 1)}
+                    className="px-4 py-2 rounded-lg bg-teal-primary text-white text-sm font-semibold hover:bg-teal-primary/90 transition-colors"
+                  >
+                    Retry
+                  </button>
                 </motion.div>
               ) : filteredTrips.length === 0 ? (
                 // EMPTY STATE

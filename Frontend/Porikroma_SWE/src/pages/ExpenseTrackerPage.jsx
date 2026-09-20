@@ -92,7 +92,10 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
         if (!active) return;
         setPersonalExpenses(personalItems);
       })
-      .catch(console.error);
+      .catch((error) => {
+        console.error('Failed to load personal expenses', error);
+        if (active) setExpenseError(error.message || 'Unable to load expenses from the server.');
+      });
 
     // Fetch ONLY the currently selected trip's expenses (if any)
     if (selectedTripId) {

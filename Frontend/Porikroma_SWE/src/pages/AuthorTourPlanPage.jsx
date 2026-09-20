@@ -15,7 +15,7 @@ const ACTIVE_INVENTORY = {
 };
 
 export default function AuthorTourPlanPage({ onNavigate, trip = null, onSaveAgentPlan }) {
-  const { user, profile, logout } = useAuth();
+  const { profile } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState('Hotels');
   const [searchQuery, setSearchQuery] = useState('');

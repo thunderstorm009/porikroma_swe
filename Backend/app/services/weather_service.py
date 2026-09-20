@@ -1,11 +1,14 @@
 from __future__ import annotations
 """OpenWeather integration kept outside route handlers."""
 
+import logging
 from datetime import date
 
 import httpx
 
 from app.core.config import get_settings
+
+logger = logging.getLogger("porikroma.weather")
 
 
 class ExternalServiceError(RuntimeError):
@@ -21,7 +24,7 @@ def forecast(latitude: float, longitude: float, requested_date: date | None = No
                 response.raise_for_status()
                 return {"date": requested_date, "latitude": latitude, "longitude": longitude, "forecast": response.json().get("list", [])}
         except (httpx.HTTPError, ValueError):
-            pass
+            logger.warning("OpenWeather request failed, using fallback forecast", exc_info=True)
 
     # Graceful fallback forecast when key is pending activation or offline
     fallback_list = [

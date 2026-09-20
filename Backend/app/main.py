@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.db.database import test_database
-from app.api.routes import admin, ai, auth, destinations, forum, misc, providers, resource_aliases, tours, trips, users, ws
+from app.api.routes import admin, ai, auth, destinations, forum, misc, providers, resource_aliases, tours, trips, users, users_ext, ws
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -29,7 +29,6 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
-from app.api.routes import users_ext
 app.include_router(users_ext.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")

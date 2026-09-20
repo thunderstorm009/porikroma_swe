@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   Compass, Calendar, Users, CreditCard, User, LogOut, Menu, X,
   Shield, Check, Lock, Camera
@@ -9,7 +9,6 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function ProfilePage({ onNavigate }) {
   const { user, profile: authProfile } = useAuth();
-  const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'preferences' | 'security'
   const [isSaved, setIsSaved] = useState(false);

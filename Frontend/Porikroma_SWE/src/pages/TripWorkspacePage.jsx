@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, Bot, CalendarDays, Check, ChevronRight, DollarSign, MapPinned, MessageCircle, Phone, Plus, Send, Sparkles, Users } from 'lucide-react';
 import TravelShell from '../components/TravelShell';
 import TravelMap from '../components/TravelMap';
-import { DESTINATIONS, MOCK_CHAT_MESSAGES, MOCK_EMERGENCY_LOCATIONS, MOCK_ITINERARY, MOCK_WEATHER, MOCK_AI_SUMMARY } from '../data/travelData';
+import { DESTINATIONS, MOCK_EMERGENCY_LOCATIONS, MOCK_ITINERARY, MOCK_WEATHER, MOCK_AI_SUMMARY } from '../data/travelData';
 import { aiService } from '../services/aiService';
 import { chatService } from '../services/chatService';
 import { emergencyService } from '../services/emergencyService';

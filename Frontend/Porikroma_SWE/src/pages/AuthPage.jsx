@@ -112,7 +112,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
     if (Object.keys(loginErrors).length === 0) {
       setLoginSubmitting(true);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: loginFields.email,
         password: loginFields.password
       });

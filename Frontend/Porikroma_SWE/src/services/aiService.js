@@ -91,7 +91,9 @@ export const aiService = {
         if (response?.data?.content) {
            return { itinerary: MOCK_ITINERARY, message: 'Itinerary optimized by AI. ' + response.data.content };
         }
-      } catch(e) {}
+      } catch (error) {
+        console.error('AI itinerary optimization failed, using fallback', error);
+      }
     }
     return mock({ itinerary: MOCK_ITINERARY, message: 'The route is now grouped by area, matched to weather, and saves roughly 42 minutes of travel time.' });
   },

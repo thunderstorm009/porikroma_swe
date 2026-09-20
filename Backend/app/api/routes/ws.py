@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Dict, List
+import json
+import logging
 import uuid
+from typing import Dict, List
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +14,7 @@ from app.models import TripMember, TripMessage
 from app.schemas import MessageRead
 
 router = APIRouter(tags=["WebSockets"])
+logger = logging.getLogger("porikroma.ws")
 
 class ConnectionManager:
     def __init__(self):
@@ -46,6 +50,7 @@ async def websocket_chat_endpoint(
         claims = _decode_token(token)
         user_id = uuid.UUID(str(claims["sub"]))
     except Exception:
+        logger.info("WebSocket auth rejected for trip %s", group_id, exc_info=True)
         await websocket.close(code=1008)
         return
 
