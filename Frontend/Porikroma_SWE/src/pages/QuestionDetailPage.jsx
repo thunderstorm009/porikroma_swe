@@ -21,6 +21,7 @@ export default function QuestionDetailPage({ questionId, onNavigate, theme, onTo
   const [consensus, setConsensus] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [postError, setPostError] = useState('');
   const [version, setVersion] = useState(0);
   useEffect(() => { 
     let active = true; 
@@ -45,13 +46,44 @@ export default function QuestionDetailPage({ questionId, onNavigate, theme, onTo
   const question = bundle?.question;
   const answerCount = bundle?.answers?.length || 0;
   const refresh = () => setVersion((value) => value + 1);
-  const likeQuestion = async () => { await forumService.likeQuestion(question.id); refresh(); };
-  const toggleBookmark = async () => { await forumService.bookmarkQuestion(question.id); refresh(); };
-  const toggleFollow = async () => { await forumService.followQuestion(question.id); refresh(); };
-  const postAnswer = async (event) => { event.preventDefault(); const text = answerText.trim(); if (!text || submitting) return; setSubmitting(true); setAnswerText(''); await forumService.createAnswer(question.id, text); setSubmitting(false); refresh(); };
-  const postReply = async (event, answerId) => { event.preventDefault(); const text = replyText.trim(); if (!text || submitting) return; setSubmitting(true); setReplyText(''); setReplyFor(null); await forumService.createReply(answerId, text); setSubmitting(false); refresh(); };
-  const likeAnswer = async (answerId) => { await forumService.likeAnswer(answerId); refresh(); };
-  const likeReply = async (replyId) => { await forumService.likeReply(replyId); refresh(); };
+  const likeQuestion = async () => { try { await forumService.likeQuestion(question.id); refresh(); } catch (error) { console.error('Failed to like question', error); } };
+  const toggleBookmark = async () => { try { await forumService.bookmarkQuestion(question.id); refresh(); } catch (error) { console.error('Failed to bookmark question', error); } };
+  const toggleFollow = async () => { try { await forumService.followQuestion(question.id); refresh(); } catch (error) { console.error('Failed to follow question', error); } };
+  const postAnswer = async (event) => {
+    event.preventDefault();
+    const text = answerText.trim();
+    if (!text || submitting) return;
+    setSubmitting(true);
+    setPostError('');
+    try {
+      await forumService.createAnswer(question.id, text);
+      setAnswerText('');
+      refresh();
+    } catch (error) {
+      setPostError(error.message || 'Unable to post your answer. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const postReply = async (event, answerId) => {
+    event.preventDefault();
+    const text = replyText.trim();
+    if (!text || submitting) return;
+    setSubmitting(true);
+    setPostError('');
+    try {
+      await forumService.createReply(answerId, text);
+      setReplyText('');
+      setReplyFor(null);
+      refresh();
+    } catch (error) {
+      setPostError(error.message || 'Unable to post your reply. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const likeAnswer = async (answerId) => { try { await forumService.likeAnswer(answerId); refresh(); } catch (error) { console.error('Failed to like answer', error); } };
+  const likeReply = async (replyId) => { try { await forumService.likeReply(replyId); refresh(); } catch (error) { console.error('Failed to like reply', error); } };
   const askAi = async () => { setAiLoading(true); setAiAnswer(null); try { const response = await aiService.answerForumQuestion({ questionId: question.id, title: question.title, content: question.content, destination: question.destination, category: question.category, answers: bundle.answers }); setAiAnswer(response); } catch { setAiAnswer({ title: 'Porikroma AI', answer: 'AI services are currently unavailable. Please try again later.', confidence: 'unavailable' }); } finally { setAiLoading(false); } };
   const summarize = async () => { setAiLoading(true); try { const [summaryResponse, consensusResponse] = await Promise.all([aiService.summarizeDiscussion({ questionId: question.id, question, answers: bundle.answers }), aiService.getCommunityConsensus({ questionId: question.id, question, answers: bundle.answers })]); setSummary(summaryResponse); setConsensus(consensusResponse); } catch { setSummary({ response: 'AI services are currently unavailable. The discussion remains available below.', recommendations: [] }); setConsensus(null); } finally { setAiLoading(false); } };
   const author = bundle?.author;
@@ -65,7 +97,7 @@ export default function QuestionDetailPage({ questionId, onNavigate, theme, onTo
       <div className="travel-section-heading forum-answer-heading"><div><h2>Answers</h2><p>{answerCount} traveler response{answerCount === 1 ? '' : 's'}</p></div><button className="travel-button travel-button-ghost" onClick={askAi} disabled={aiLoading}><Sparkles size={14} /> {aiLoading ? 'Thinking…' : 'Ask AI'}</button></div>
       {aiAnswer && <div className="travel-panel travel-panel-pad travel-ai-card forum-ai-answer"><span className="travel-ai-title">✦ Porikroma AI · AI answer</span><FormattedMarkdown content={aiAnswer.answer} />{aiAnswer.confidence === 'medium' && <div className="travel-alert" style={{ marginTop: 14 }}><span>I'm not fully confident enough to give a reliable local answer. Travelers who recently visited may be able to help.</span><button className="travel-link" onClick={() => onNavigate('ask-question', { title: question.title, content: question.content, destination: question.destination, category: question.category, tags: question.tags })}>Ask the Community</button></div>}</div>}
       <div className="forum-answer-list">{bundle.answers.length === 0 ? <div className="travel-panel travel-empty"><MessageCircle size={25} color="#2d6a4f" /><h3>Be the first to answer.</h3><p>Your local experience could help this traveler.</p></div> : bundle.answers.map((answer) => <article className="travel-panel travel-panel-pad forum-answer-card" key={answer.id}><Person user={answer.author} /><p>{answer.content}</p><div className="forum-answer-meta"><span>{timeAgo(answer.createdAt)}</span><button className={`forum-action-button ${answer.liked ? 'selected' : ''}`} onClick={() => likeAnswer(answer.id)}><Heart size={14} fill={answer.liked ? 'currentColor' : 'none'} /> {answer.likes}</button><button className="forum-action-button" onClick={() => setReplyFor(replyFor === answer.id ? null : answer.id)}><MessageCircle size={14} /> Reply</button></div>{answer.replies?.length > 0 && <div className="forum-replies">{answer.replies.map((reply) => <div className="forum-reply" key={reply.id}><Person user={reply.author} compact /><p>{reply.content}</p><div className="forum-reply-meta"><small>{timeAgo(reply.createdAt)}</small><button className={`forum-action-button ${reply.liked ? 'selected' : ''}`} onClick={() => likeReply(reply.id)}><Heart size={12} fill={reply.liked ? 'currentColor' : 'none'} /> {reply.likes || 0}</button></div></div>)}</div>}{replyFor === answer.id && <form className="forum-reply-form" onSubmit={(event) => postReply(event, answer.id)}><input className="travel-input" value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="Write a reply…" aria-label="Reply" /><button className="travel-button" disabled={submitting} aria-label="Post reply"><Send size={14} /></button></form>}</article>)}</div>
-      <form className="travel-panel travel-panel-pad forum-compose" onSubmit={postAnswer}><div className="forum-compose-heading"><UserRound size={18} color="#2d6a4f" /><div><strong>Share your answer</strong><small>Keep it practical and kind.</small></div></div><textarea className="travel-textarea" rows="5" value={answerText} onChange={(event) => setAnswerText(event.target.value)} placeholder="Write your answer…" required /><button className="travel-button" type="submit" disabled={submitting}><Send size={14} /> Post Answer</button></form>
+      <form className="travel-panel travel-panel-pad forum-compose" onSubmit={postAnswer}><div className="forum-compose-heading"><UserRound size={18} color="#2d6a4f" /><div><strong>Share your answer</strong><small>Keep it practical and kind.</small></div></div>{postError && <div className="travel-alert" role="alert"><span>{postError}</span></div>}<textarea className="travel-textarea" rows="5" value={answerText} onChange={(event) => setAnswerText(event.target.value)} placeholder="Write your answer…" required /><button className="travel-button" type="submit" disabled={submitting}><Send size={14} /> Post Answer</button></form>
     </main><aside className="forum-detail-sidebar"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI discussion tools</span><h3>Make the thread easier to scan.</h3><p>Summaries are generated from the current discussion answers and clearly separated from traveler contributions.</p><button className="travel-button" style={{ marginTop: 15, width: '100%' }} onClick={summarize} disabled={aiLoading}><Sparkles size={14} /> {aiLoading ? 'Analyzing…' : 'Summarize discussion'}</button></div>{summary && <div className="travel-panel travel-panel-pad forum-summary"><span className="travel-ai-title">✦ AI Community Summary</span><FormattedMarkdown content={summary.response} /><ul className="travel-insight-list">{summary.recommendations.map((item) => <li key={item}>{item}</li>)}</ul>{consensus && <div className="forum-consensus"><strong>✦ Community Consensus</strong>{consensus.stats.map((stat) => <span key={stat}>{stat}</span>)}</div>}</div>}<div className="travel-panel travel-panel-pad"><span className="travel-card-kicker">Similar Questions</span>{similar.length === 0 ? <p className="forum-muted">No similar questions yet.</p> : similar.map((item) => <button className="forum-mini-question" key={item.id} onClick={() => onNavigate('question-detail', item.id)}><strong>{item.title}</strong><small>{item.answerIds.length} answers · {item.destination}</small></button>)}</div></aside></div>
   </TravelShell>;
 }

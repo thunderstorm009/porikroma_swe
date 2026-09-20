@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.models import Profile, Tour, TourDeparture, TourReservationRequest
 from app.schemas import DepartureRead, ReservationCreate, ReservationRead, TourRead
 from app.services.audit_service import record_audit
+from app.services.rate_limit import check_content_write_rate_limit
 
 router = APIRouter(prefix="/tours", tags=["Tours"])
 reservation_router = APIRouter(prefix="/reservation-requests", tags=["Reservations"])
@@ -59,7 +60,7 @@ def checkout_link(tour_id: UUID, db: Session = Depends(get_db)):
     return {"data": {"tour_id": tour.id, "checkout_url": tour.external_checkout_url, "payment_processed_by_porikroma": False}}
 
 
-@router.post("/{tour_id}/reservation-requests", status_code=status.HTTP_201_CREATED, summary="Request seats on a published tour")
+@router.post("/{tour_id}/reservation-requests", status_code=status.HTTP_201_CREATED, summary="Request seats on a published tour", dependencies=[Depends(check_content_write_rate_limit)])
 def create_reservation(tour_id: UUID, payload: ReservationCreate, profile: Profile = Depends(get_current_profile), db: Session = Depends(get_db)):
     tour = public_tour(db, tour_id)
     departure = db.scalar(select(TourDeparture).where(TourDeparture.id == payload.departure_id, TourDeparture.tour_id == tour.id).with_for_update())

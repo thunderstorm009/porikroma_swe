@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import AuthenticatedUser, get_current_profile, get_current_user
 from app.db.database import get_db
+from app.services.rate_limit import check_content_write_rate_limit
 from app.models import (
     AnswerLike,
     Destination,
@@ -175,7 +176,7 @@ def tags_for(db: Session, names: list[str]) -> list[ForumTag]:
     return result
 
 
-@router.post("/questions", status_code=status.HTTP_201_CREATED, summary="Create a forum question")
+@router.post("/questions", status_code=status.HTTP_201_CREATED, summary="Create a forum question", dependencies=[Depends(check_content_write_rate_limit)])
 def create_question(payload: QuestionCreate, profile: Profile = Depends(get_current_profile), db: Session = Depends(get_db)):
     destination_id = payload.destination_id
     if destination_id is None and payload.destination:
@@ -222,7 +223,7 @@ def delete_question(question_id: UUID, current_user: AuthenticatedUser = Depends
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/questions/{question_id}/answers", status_code=status.HTTP_201_CREATED, summary="Answer a forum question")
+@router.post("/questions/{question_id}/answers", status_code=status.HTTP_201_CREATED, summary="Answer a forum question", dependencies=[Depends(check_content_write_rate_limit)])
 def create_answer(question_id: UUID, payload: AnswerCreate, profile: Profile = Depends(get_current_profile), db: Session = Depends(get_db)):
     if not db.get(ForumQuestion, question_id):
         raise HTTPException(status_code=404, detail="Question not found")
@@ -259,7 +260,7 @@ def delete_answer(answer_id: UUID, current_user: AuthenticatedUser = Depends(get
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/answers/{answer_id}/replies", status_code=status.HTTP_201_CREATED, summary="Reply once to a forum answer")
+@router.post("/answers/{answer_id}/replies", status_code=status.HTTP_201_CREATED, summary="Reply once to a forum answer", dependencies=[Depends(check_content_write_rate_limit)])
 def create_reply(answer_id: UUID, payload: ReplyCreate, profile: Profile = Depends(get_current_profile), db: Session = Depends(get_db)):
     if not db.get(ForumAnswer, answer_id):
         raise HTTPException(status_code=404, detail="Answer not found")
