@@ -101,7 +101,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
       if (localWs) localWs.close();
       if (wsRef.current) wsRef.current.close();
     };
-  }, [trip?.id, useMock]);
+  }, [trip?.id, trip?.type, useMock]);
 
   const filteredEmergency = useMemo(() => emergencyCategory === 'All' ? emergencyLocations : emergencyLocations.filter((item) => item.category === emergencyCategory), [emergencyCategory, emergencyLocations]);
   const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);

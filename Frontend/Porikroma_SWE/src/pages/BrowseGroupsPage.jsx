@@ -84,6 +84,17 @@ export default function BrowseGroupsPage({ onNavigate }) {
     return matchesSearch && matchesSlots && matchesDate;
   });
 
+  const handleOpenModal = (trip) => {
+    setSelectedTrip(trip);
+    setAnswer('');
+    setShowConfirmation(false);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedTrip(null);
+    setAnswer('');
+  };
+
   // Modal Keyboard Dismissal & Focus Lock
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -101,17 +112,6 @@ export default function BrowseGroupsPage({ onNavigate }) {
       setTimeout(() => textareaRef.current.focus(), 150);
     }
   }, [selectedTrip]);
-
-  const handleOpenModal = (trip) => {
-    setSelectedTrip(trip);
-    setAnswer('');
-    setShowConfirmation(false);
-  };
-
-  const handleCloseModal = () => {
-    setSelectedTrip(null);
-    setAnswer('');
-  };
 
   const handleSendRequest = async (e) => {
     e.preventDefault();

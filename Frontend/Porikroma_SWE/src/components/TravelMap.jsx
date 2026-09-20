@@ -17,6 +17,11 @@ export default function TravelMap({ location, itinerary = [], selectable = false
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
 
+  const choose = (item) => {
+    setSelected(item);
+    if (selectable && onSelectLocation) onSelectLocation(item);
+  };
+
   useEffect(() => {
     let ignore = false;
     const load = async () => {
@@ -145,10 +150,6 @@ export default function TravelMap({ location, itinerary = [], selectable = false
   };
 
   const markers = useMemo(() => results.slice(0, 9), [results]);
-  const choose = (item) => {
-    setSelected(item);
-    if (selectable && onSelectLocation) onSelectLocation(item);
-  };
 
   const currentSearchTarget = query || location?.name || "Cox's Bazar, Bangladesh";
 

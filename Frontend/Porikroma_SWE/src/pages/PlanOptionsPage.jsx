@@ -432,7 +432,7 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
                     Regenerate options
                   </button>
                   <button
-                    onClick={() => alert("Human agent planner desk notified. We'll contact you within 2 hours.")}
+                    onClick={() => alert("Human travel agent requests aren't available yet. Please reach out via the support/community page in the meantime.")}
                     className="text-[11px] text-navy/55 hover:text-teal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary rounded"
                   >
                     Prefer a human touch? Request a Travel Agent plan instead

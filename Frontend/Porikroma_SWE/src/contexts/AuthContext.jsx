@@ -11,6 +11,19 @@ export function AuthProvider({ children }) {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchProfileAndRole = async () => {
+    try {
+      const response = await apiClient.get('/api/v1/users/me');
+      const data = response.data;
+      setProfile(data.profile || data);
+      setRoles(data.roles || (data.role ? [data.role] : []));
+    } catch (err) {
+      console.error('Failed to fetch profile', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const restoreSession = (session) => {
@@ -49,19 +62,6 @@ export function AuthProvider({ children }) {
 
     return () => { active = false; subscription.unsubscribe(); };
   }, []);
-
-  const fetchProfileAndRole = async () => {
-    try {
-      const response = await apiClient.get('/api/v1/users/me');
-      const data = response.data;
-      setProfile(data.profile || data);
-      setRoles(data.roles || (data.role ? [data.role] : []));
-    } catch (err) {
-      console.error('Failed to fetch profile', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const logout = async () => {
     setUser(null);

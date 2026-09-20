@@ -466,7 +466,7 @@ export default function ProfilePage({ onNavigate }) {
                     </div>
                   </div>
                   <button
-                    onClick={() => alert("Two-factor authentication setup initialized.")}
+                    onClick={() => alert("Two-factor authentication isn't available yet. We'll let you know when it ships.")}
                     className="px-3 py-1.5 border border-border-custom hover:border-teal-primary text-xs font-semibold text-navy bg-white rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
                   >
                     Enable 2FA

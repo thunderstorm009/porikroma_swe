@@ -202,6 +202,9 @@ export default function AdminInventoryPage({ onNavigate }) {
               <p className="text-xs text-navy/60 font-normal mt-0.5">
                 Manage record catalogs powering the AI itinerary planner. Draft records are excluded from auto-generation.
               </p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Demo mode: changes on this page are kept in your browser only and are lost on refresh — inventory management isn't wired to the backend yet.
+              </p>
             </div>
           </div>
 
