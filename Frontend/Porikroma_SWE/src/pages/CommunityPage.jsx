@@ -58,7 +58,7 @@ export default function CommunityPage({ onNavigate, theme, onToggleTheme, initia
   }, [debouncedQuery, category, sort, version]);
   const userById = useMemo(() => Object.fromEntries(users.map((user) => [user.id, user])), [users]);
   const openQuestion = (id) => onNavigate('question-detail', id);
-  const bookmark = async (id) => { await forumService.bookmarkQuestion(id); setVersion((value) => value + 1); };
+  const bookmark = async (id) => { try { await forumService.bookmarkQuestion(id); setVersion((value) => value + 1); } catch (error) { console.error('Failed to bookmark question', error); } };
   const latest = questions.slice(0, 3);
 
   return <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="Community" title="Travelers helping travelers">
