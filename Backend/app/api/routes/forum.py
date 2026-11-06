@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.security import AuthenticatedUser, get_current_profile, get_current_user
+from app.core.security import AuthenticatedUser, get_current_profile, get_current_user, get_optional_user
 from app.db.database import get_db
 from app.services.rate_limit import check_content_write_rate_limit
 from app.models import (
@@ -69,12 +69,14 @@ def question_read(question: ForumQuestion, user_id: UUID | None = None) -> Quest
         tags=[tag.name for tag in question.tags],
         answer_count=len(question.answers),
         like_count=len(question.likes),
+        liked=liked_by,
         bookmarked=bookmarked,
         followed=followed,
     )
 
 
-def answer_read(answer: ForumAnswer) -> AnswerRead:
+def answer_read(answer: ForumAnswer, user_id: UUID | None = None) -> AnswerRead:
+    liked = any(item.user_id == user_id for item in answer.likes) if user_id else False
     return AnswerRead(
         id=answer.id,
         question_id=answer.question_id,
@@ -86,6 +88,7 @@ def answer_read(answer: ForumAnswer) -> AnswerRead:
         author=public_profile(answer.author),
         replies=[ReplyRead.model_validate(reply).model_copy(update={"author": public_profile(reply.author)}) for reply in answer.replies],
         like_count=len(answer.likes),
+        liked=liked,
     )
 
 
@@ -148,14 +151,15 @@ def search_questions(query: str | None = Query(None, max_length=200), category: 
 
 
 @router.get("/questions/{question_id}", summary="Get a forum question")
-def get_question(question_id: UUID, db: Session = Depends(get_db)):
+def get_question(question_id: UUID, current_user: AuthenticatedUser | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     question = db.scalar(question_stmt().where(ForumQuestion.id == question_id))
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     question.view_count += 1
     db.commit()
+    user_id = current_user.id if current_user else None
     answers = db.scalars(answer_stmt().where(ForumAnswer.question_id == question_id).order_by(ForumAnswer.created_at)).unique().all()
-    return {"data": QuestionBundle(question=question_read(question), answers=[answer_read(item) for item in answers])}
+    return {"data": QuestionBundle(question=question_read(question, user_id), answers=[answer_read(item, user_id) for item in answers])}
 
 
 def tags_for(db: Session, names: list[str]) -> list[ForumTag]:
@@ -232,7 +236,7 @@ def create_answer(question_id: UUID, payload: AnswerCreate, profile: Profile = D
     db.commit()
     db.refresh(answer)
     answer = db.scalar(answer_stmt().where(ForumAnswer.id == answer.id))
-    return {"data": answer_read(answer)}
+    return {"data": answer_read(answer, profile.id)}
 
 
 @router.patch("/answers/{answer_id}", summary="Edit an owned forum answer")
@@ -245,7 +249,7 @@ def update_answer(answer_id: UUID, payload: AnswerCreate, current_user: Authenti
     answer.content = payload.content
     db.commit()
     answer = db.scalar(answer_stmt().where(ForumAnswer.id == answer.id))
-    return {"data": answer_read(answer)}
+    return {"data": answer_read(answer, current_user.id)}
 
 
 @router.delete("/answers/{answer_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete an owned forum answer")

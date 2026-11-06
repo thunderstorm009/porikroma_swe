@@ -5,7 +5,8 @@ import { DESTINATIONS } from '../data/travelData';
 import { aiService } from '../services/aiService';
 
 const destinationImage = (trip) => {
-  const match = DESTINATIONS.find((item) => trip.destination?.toLowerCase().includes(item.name.toLowerCase().split(' ')[0].toLowerCase()));
+  const destStr = typeof trip?.destination === 'string' ? trip.destination : (trip?.destination?.name || trip?.title || '');
+  const match = DESTINATIONS.find((item) => destStr.toLowerCase().includes(item.name.toLowerCase().split(' ')[0].toLowerCase()));
   return match || DESTINATIONS[0];
 };
 

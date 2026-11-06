@@ -21,10 +21,12 @@ def membership(db: Session, trip_id: UUID, user_id: UUID) -> TripMember | None:
     return db.scalar(select(TripMember).where(TripMember.trip_id == trip_id, TripMember.user_id == user_id))
 
 
-def require_trip_access(db: Session, trip_id: UUID, user_id: UUID, write: bool = False) -> tuple[Trip, TripMember]:
+def require_trip_access(db: Session, trip_id: UUID, user_id: UUID, write: bool = False) -> tuple[Trip, TripMember | None]:
     trip = get_trip(db, trip_id)
     member = membership(db, trip_id, user_id)
     if not member:
+        if not write and trip.visibility == 'public':
+            return trip, None
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this trip")
     if write and member.role not in {"owner", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Trip admin access required")

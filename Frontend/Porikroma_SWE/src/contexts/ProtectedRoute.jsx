@@ -3,7 +3,8 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 export default function ProtectedRoute({ allowedRoles }) {
-  const { user, role, loading } = useAuth();
+  const { user, roles, role, loading } = useAuth();
+  const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
   if (loading) {
     return (
@@ -13,11 +14,12 @@ export default function ProtectedRoute({ allowedRoles }) {
     );
   }
 
-  if (!user) {
+  if (!user && !useMock) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(role)) {
+  const userRoles = Array.isArray(roles) && roles.length > 0 ? roles : (role ? [role] : []);
+  if (allowedRoles && !allowedRoles.some(r => userRoles.includes(r))) {
     return <Navigate to="/dashboard" replace />;
   }
 

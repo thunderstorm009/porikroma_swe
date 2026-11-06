@@ -44,7 +44,7 @@ def _decode_token(token: str) -> dict:
         # project's JWKS; the legacy shared secret is only valid for HS256 tokens.
         if algorithm in ASYMMETRIC_JWT_ALGORITHMS and _jwks_client():
             key = _jwks_client().get_signing_key_from_jwt(token).key
-            return jwt.decode(token, key, algorithms=[algorithm], options={"require": ["sub"]}, audience="authenticated")
+            return jwt.decode(token, key, algorithms=[algorithm], options={"require": ["sub"]}, audience="authenticated", leeway=60)
         if algorithm not in {"HS256", "HS384", "HS512"}:
             raise RuntimeError(f"Unsupported Supabase JWT algorithm: {algorithm}")
         secret = settings.supabase_jwt_secret
@@ -54,7 +54,7 @@ def _decode_token(token: str) -> dict:
             secret = settings.supabase_secret_key
         if not secret:
             raise RuntimeError("Supabase JWT verification is not configured")
-        return jwt.decode(token, secret, algorithms=[algorithm], audience="authenticated")
+        return jwt.decode(token, secret, algorithms=[algorithm], audience="authenticated", leeway=60)
     except Exception as exc:
         logger.info("JWT validation failed: %s", type(exc).__name__)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired access token") from exc
@@ -69,6 +69,17 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user identity") from exc
     return AuthenticatedUser(user_id, claims)
+
+
+def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> AuthenticatedUser | None:
+    if credentials is None:
+        return None
+    try:
+        claims = _decode_token(credentials.credentials)
+        user_id = UUID(str(claims["sub"]))
+        return AuthenticatedUser(user_id, claims)
+    except Exception:
+        return None
 
 
 def get_current_profile(

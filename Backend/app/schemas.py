@@ -341,6 +341,7 @@ class AnswerRead(APIModel):
     author: Optional[ProfileRead] = None
     replies: list[ReplyRead] = []
     like_count: int = 0
+    liked: bool = False
 
 
 class QuestionRead(APIModel):
@@ -358,6 +359,7 @@ class QuestionRead(APIModel):
     tags: list[str] = []
     answer_count: int = 0
     like_count: int = 0
+    liked: bool = False
     bookmarked: bool = False
     followed: bool = False
 

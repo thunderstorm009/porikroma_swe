@@ -6,12 +6,15 @@ import {
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../services/apiClient';
 
 export default function ProfilePage({ onNavigate }) {
-  const { user, profile: authProfile } = useAuth();
+  const { user, profile: authProfile, refreshProfile } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'preferences' | 'security'
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   // User Profile Form State
   const [userProfile, setUserProfile] = useState({
@@ -48,12 +51,26 @@ export default function ProfilePage({ onNavigate }) {
     }
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    setIsSaved(true);
-    setTimeout(() => {
-      setIsSaved(false);
-    }, 2500);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await apiClient.patch('/api/v1/users/me', {
+        full_name: userProfile.fullName,
+        bio: userProfile.bio
+      });
+      if (refreshProfile) await refreshProfile();
+      setIsSaved(true);
+      setTimeout(() => {
+        setIsSaved(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      setSaveError(err.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Sidebar Menu Items
@@ -345,6 +362,11 @@ export default function ProfilePage({ onNavigate }) {
                 </p>
               </div>
 
+              {saveError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+                  {saveError}
+                </div>
+              )}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-custom">
                 {isSaved && (
                   <span className="text-xs font-mono text-teal-primary font-semibold flex items-center gap-1">
@@ -353,9 +375,10 @@ export default function ProfilePage({ onNavigate }) {
                 )}
                 <button
                   type="submit"
-                  className="bg-teal-primary hover:bg-teal-hover text-white text-xs font-semibold px-5 py-2.5 rounded-lg transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
+                  disabled={isSaving}
+                  className="bg-teal-primary hover:bg-teal-hover text-white text-xs font-semibold px-5 py-2.5 rounded-lg transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary disabled:opacity-50"
                 >
-                  Save changes
+                  {isSaving ? 'Saving…' : 'Save changes'}
                 </button>
               </div>
             </form>

@@ -14,11 +14,13 @@ export function AuthProvider({ children }) {
   const fetchProfileAndRole = async () => {
     try {
       const response = await apiClient.get('/api/v1/users/me');
-      const data = response.data;
-      setProfile(data.profile || data);
-      setRoles(data.roles || (data.role ? [data.role] : []));
+      const data = response?.data;
+      if (data) {
+        setProfile(data.profile || data);
+        setRoles(data.roles || (data.role ? [data.role] : []));
+      }
     } catch (err) {
-      console.error('Failed to fetch profile', err);
+      console.warn('Profile fetch notice:', err);
     } finally {
       setLoading(false);
     }
@@ -26,14 +28,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true;
-    const restoreSession = (session) => {
+
+    const restoreSession = (sess) => {
       if (!active) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        // Defer the API call so it does not run inside Supabase's auth event
-        // lock. This prevents a stale session/token race after login/refresh.
-        window.setTimeout(() => { if (active) fetchProfileAndRole(); }, 0);
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      if (sess?.user) {
+        window.setTimeout(() => {
+          if (active) fetchProfileAndRole();
+        }, 0);
       } else {
         setProfile(null);
         setRoles([]);
@@ -41,18 +44,18 @@ export function AuthProvider({ children }) {
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => restoreSession(session));
+    supabase.auth.getSession().then(({ data: { session: sess } }) => restoreSession(sess)).catch(() => {
+      if (active) setLoading(false);
+    });
 
-    // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
       if (!active) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        setLoading(true);
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
-          window.setTimeout(() => { if (active) fetchProfileAndRole(); }, 0);
-        }
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      if (sess?.user) {
+        window.setTimeout(() => {
+          if (active) fetchProfileAndRole();
+        }, 0);
       } else {
         setProfile(null);
         setRoles([]);
@@ -60,7 +63,10 @@ export function AuthProvider({ children }) {
       }
     });
 
-    return () => { active = false; subscription.unsubscribe(); };
+    return () => {
+      active = false;
+      subscription?.unsubscribe?.();
+    };
   }, []);
 
   const logout = async () => {
@@ -68,11 +74,17 @@ export function AuthProvider({ children }) {
     setSession(null);
     setProfile(null);
     setRoles([]);
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignore
+    }
   };
 
+  const primaryRole = roles[0] || profile?.role || 'traveler';
+
   return (
-    <AuthContext.Provider value={{ user, session, profile, roles, role: roles[0] || profile?.role || null, loading, logout }}>
+    <AuthContext.Provider value={{ user, session, profile, roles, role: primaryRole, loading, logout, refreshProfile: fetchProfileAndRole }}>
       {children}
     </AuthContext.Provider>
   );

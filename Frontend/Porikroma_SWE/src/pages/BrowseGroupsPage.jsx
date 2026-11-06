@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import { useAuth } from '../contexts/AuthContext';
+import { tripService } from '../services/tripService';
 
 export default function BrowseGroupsPage({ onNavigate }) {
   const { user, profile, logout } = useAuth();
@@ -37,33 +38,30 @@ export default function BrowseGroupsPage({ onNavigate }) {
     let active = true;
     setIsLoading(true);
     setLoadError(null);
-    import('../services/apiClient').then(({ apiClient }) => {
-      apiClient.get('/api/v1/trips', { travel_type: 'group', discover: true })
-        .then(response => {
-          if (!active) return;
-          const items = response.data?.items || [];
-          setTrips(items.map(trip => ({
-            ...trip,
-            destination: trip.destination?.name || trip.title || 'Group Trip',
-            dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
-            openSlots: true, // Assuming open slots for now
-            slotsLeft: 10 - (trip.members?.length || 0),
-            creator: trip.created_by?.full_name || trip.created_by?.username || 'Creator',
-            creatorBg: 'bg-teal-primary text-white',
-            members: (trip.members || []).slice(0, 3).map(m => ({
-              initial: (m.user?.full_name || m.user?.username || 'T')[0].toUpperCase(),
-              bg: 'bg-navy/80 text-white'
-            })),
-            question: trip.description || 'Why would you like to join our group trip?'
-          })));
-        })
-        .catch(err => {
-          if (!active) return;
-          console.error('Failed to load group trips', err);
-          setLoadError('Unable to load group trips. Please try again.');
-        })
-        .finally(() => { if (active) setIsLoading(false); });
-    });
+    tripService.getDiscoverTrips('group')
+      .then(items => {
+        if (!active) return;
+        setTrips((items || []).map(trip => ({
+          ...trip,
+          destination: trip.destination?.name || trip.title || 'Group Trip',
+          dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
+          openSlots: true,
+          slotsLeft: Math.max(0, 10 - (trip.members?.length || 0)),
+          creator: trip.created_by?.full_name || trip.created_by?.username || 'Creator',
+          creatorBg: 'bg-teal-primary text-white',
+          members: (trip.members || []).slice(0, 3).map(m => ({
+            initial: (m.user?.full_name || m.user?.username || 'T')[0].toUpperCase(),
+            bg: 'bg-navy/80 text-white'
+          })),
+          question: trip.description || 'Why would you like to join our group trip?'
+        })));
+      })
+      .catch(err => {
+        if (!active) return;
+        console.error('Failed to load group trips', err);
+        setLoadError('Unable to load group trips. Please try again.');
+      })
+      .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
   }, [reloadToken]);
 
@@ -119,17 +117,14 @@ export default function BrowseGroupsPage({ onNavigate }) {
 
     setIsSubmitting(true);
     try {
-      const { apiClient } = await import('../services/apiClient');
-      await apiClient.post(`/api/v1/trips/${selectedTrip.id}/join-requests`, {
-        message: answer
-      });
+      await tripService.createJoinRequest(selectedTrip.id, answer.trim());
       setShowConfirmation(true);
       setTimeout(() => {
         handleCloseModal();
       }, 2000);
     } catch (err) {
       console.error('Failed to send join request', err);
-      alert('Failed to send request. ' + (err.message || ''));
+      alert(err.message || 'Failed to send request.');
     } finally {
       setIsSubmitting(false);
     }

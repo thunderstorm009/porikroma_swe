@@ -3,6 +3,25 @@ import { apiClient } from './apiClient';
 
 const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 
+const getWeatherIcon = (main) => {
+  switch ((main || '').toLowerCase()) {
+    case 'rain':
+    case 'drizzle':
+    case 'thunderstorm':
+      return '🌧️';
+    case 'clouds':
+      return '⛅';
+    case 'clear':
+      return '☀️';
+    case 'fog':
+    case 'mist':
+    case 'haze':
+      return '🌫️';
+    default:
+      return '☀️';
+  }
+};
+
 export const weatherService = {
   getWeather: async (location) => {
     if (!useMock && location?.latitude && location?.longitude) {
@@ -11,17 +30,17 @@ export const weatherService = {
           latitude: location.latitude,
           longitude: location.longitude
         });
-        if (response?.data?.forecast) {
-          return response.data.forecast.map((item) => {
-            const dateStr = item.dt_txt ? item.dt_txt.split(' ')[0] : 'Unknown';
-            return {
-              day: dateStr,
-              icon: item.weather?.[0]?.icon?.includes('d') ? '☀️' : '🌧️',
-              temp: Math.round(item.main?.temp || 0),
-              rain: item.main?.humidity || 0,
-              label: item.weather?.[0]?.description || 'Clear'
-            };
-          });
+        const forecastList = response?.data?.forecast;
+        if (Array.isArray(forecastList) && forecastList.length > 0) {
+          return forecastList.map((item, idx) => ({
+            day: item.dt_txt
+              ? new Date(item.dt_txt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              : `Day ${idx + 1}`,
+            temp: Math.round(item.main?.temp ?? 28),
+            rain: item.main?.humidity ? Math.min(100, Math.round(item.main.humidity * 0.7)) : 20,
+            icon: getWeatherIcon(item.weather?.[0]?.main),
+            label: item.weather?.[0]?.description || item.weather?.[0]?.main || 'Clear'
+          }));
         }
       } catch (err) {
         console.warn('Weather service backend request failed, using fallback:', err);
@@ -30,5 +49,3 @@ export const weatherService = {
     return MOCK_WEATHER[location?.id] || MOCK_WEATHER.default;
   }
 };
-
-

@@ -39,6 +39,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@router.websocket("/groups/{group_id}/chat")
 @router.websocket("/trips/{group_id}/chat")
 async def websocket_chat_endpoint(
     websocket: WebSocket,

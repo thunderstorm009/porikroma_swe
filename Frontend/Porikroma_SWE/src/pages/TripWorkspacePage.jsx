@@ -8,6 +8,8 @@ import { chatService } from '../services/chatService';
 import { emergencyService } from '../services/emergencyService';
 import { weatherService } from '../services/weatherService';
 import { expenseService } from '../services/expenseService';
+import { tripService } from '../services/tripService';
+import { useAuth } from '../contexts/AuthContext';
 
 const tabs = [
   { id: 'overview', label: 'Overview', icon: <Sparkles size={14} /> },
@@ -19,19 +21,34 @@ const tabs = [
 ];
 const emergencyIcon = { Hospital: '🏥', Pharmacy: '💊', Police: '🚓', 'Fire Station': '🚒' };
 
-const getDestination = (trip) => trip?.location || DESTINATIONS.find((location) => trip?.destination?.toLowerCase().includes(location.name.split(' ')[0].toLowerCase())) || DESTINATIONS[0];
-const getWeather = (trip) => MOCK_WEATHER[getDestination(trip).id] || MOCK_WEATHER.default;
+const getDestination = (trip) => {
+  if (trip?.location && typeof trip.location === 'object') return trip.location;
+  const destStr = typeof trip?.destination === 'string'
+    ? trip.destination
+    : (trip?.destination?.name || trip?.title || '');
+  if (destStr) {
+    const match = DESTINATIONS.find((location) => destStr.toLowerCase().includes(location.name.split(' ')[0].toLowerCase()));
+    if (match) return match;
+  }
+  return DESTINATIONS[0];
+};
+
+const getWeather = (trip) => MOCK_WEATHER[getDestination(trip)?.id] || MOCK_WEATHER.default;
 
 export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, theme, onToggleTheme }) {
+  const { profile, user } = useAuth();
+  const currentUserName = profile?.full_name || profile?.username || user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : 'Traveler');
+  const currentUserInitials = currentUserName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'TR';
+
   const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
   const [activeTab, setActiveTab] = useState('overview');
   const [summary, setSummary] = useState(MOCK_AI_SUMMARY);
   const [itinerary, setItinerary] = useState(trip?.itinerary?.length ? trip.itinerary : MOCK_ITINERARY);
   const [optimizing, setOptimizing] = useState(false);
-  const [weather, setWeather] = useState(getWeather(trip));
-  const [expenses, setExpenses] = useState(useMock ? [{ id: 'e1', description: 'Hotel advance payment', category: 'Lodging', amount: 9500, paidBy: 'Sarah' }, { id: 'e2', description: 'Private microbus', category: 'Transport', amount: 8500, paidBy: 'Abrar' }, { id: 'e3', description: 'Group dinner', category: 'Food', amount: 2400, paidBy: 'Huzaifa' }] : []);
+  const [weather, setWeather] = useState(() => getWeather(trip));
+  const [expenses, setExpenses] = useState(useMock ? [{ id: 'e1', description: 'Hotel advance payment', category: 'Lodging', amount: 9500, paidBy: currentUserName }, { id: 'e2', description: 'Private microbus', category: 'Transport', amount: 8500, paidBy: 'Abrar' }, { id: 'e3', description: 'Group dinner', category: 'Food', amount: 2400, paidBy: 'Huzaifa' }] : []);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
-  const [expenseForm, setExpenseForm] = useState({ description: '', category: 'Food', amount: '', paidBy: 'Sarah' });
+  const [expenseForm, setExpenseForm] = useState({ description: '', category: 'Food', amount: '', paidBy: currentUserName });
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [budgetAdvice, setBudgetAdvice] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -47,118 +64,169 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
 
   useEffect(() => {
     let ignore = false;
-    aiService.generateTripSummary(trip).then((result) => { if (!ignore) setSummary(result); });
-    weatherService.getWeather(destination).then((result) => { if (!ignore) setWeather(result); });
-    emergencyService.getEmergencyLocations().then((result) => { if (!ignore) setEmergencyLocations(result); });
+    aiService.generateTripSummary(trip).then((result) => { if (!ignore && result) setSummary(result); });
+    weatherService.getWeather(destination).then((result) => { if (!ignore && result) setWeather(result); });
+    emergencyService.getEmergencyLocations().then((result) => { if (!ignore && result) setEmergencyLocations(result); });
     return () => { ignore = true; };
   }, [trip, destination]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (useMock || !trip?.id) return;
     let active = true;
-    expenseService.list(trip.id).then((items) => { if (active) setExpenses(items); }).catch((error) => console.error('Failed to load persisted trip expenses:', error));
+    expenseService.list(trip.id).then((items) => { if (active && Array.isArray(items)) setExpenses(items); }).catch((error) => console.error('Failed to load persisted trip expenses:', error));
     
-    // Fetch join requests if group
-    if (trip?.type === 'Group') {
-      import('../services/apiClient').then(({ apiClient }) => {
-        apiClient.get(`/api/v1/trips/${trip.id}/join-requests`)
-          .then(res => { if (active) setJoinRequests(res.data || []); })
-          .catch(() => {}); // likely not owner or 403
-      });
+    if (trip?.type === 'Group' || trip?.travel_type === 'group') {
+      tripService.getJoinRequests(trip.id)
+        .then((items) => { if (active && Array.isArray(items)) setJoinRequests(items); })
+        .catch(() => {});
     }
 
     // Load chat history
     chatService.getMessages(trip.id)
-      .then(history => { if (active) setMessages(history); })
-      .catch(err => console.error('Failed to load chat history:', err));
+      .then(history => { if (active && Array.isArray(history)) setMessages(history); })
+      .catch(() => {});
 
-    let localWs = null;
-
-    // Connect WS
-    chatService.connect(trip.id, (data) => {
-      setMessages((current) => {
-        // Prevent duplicate appending from strict mode multiple WS
-        if (data.id && current.some(m => m.id === data.id)) return current;
-        return [...current, {
-          id: data.id || Date.now(),
-          user: data.sender?.full_name || data.sender?.username || 'User',
-          initials: (data.sender?.full_name || data.sender?.username || 'U')[0].toUpperCase(),
-          time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          message: data.content || data.text,
-          color: 'blue'
-        }];
-      });
-    }, (status) => { if (active) setChatStatus(status); }).then(ws => {
+    chatService.connect(
+      trip.id,
+      (incoming) => {
+        setMessages((current) => [...current, { ...incoming, id: incoming.id || Date.now() }]);
+      },
+      (status) => {
+        if (active) setChatStatus(status);
+      }
+    ).then(ws => {
       if (!active) {
-        ws.close();
+        if (ws && typeof ws.close === 'function') ws.close();
       } else {
-        localWs = ws;
         wsRef.current = ws;
       }
-    }).catch(err => console.error('Failed to connect to chat WS:', err));
+    }).catch(() => {});
 
     return () => { 
       active = false; 
-      if (localWs) localWs.close();
-      if (wsRef.current) wsRef.current.close();
+      if (wsRef.current && typeof wsRef.current.close === 'function') {
+        wsRef.current.close();
+      }
     };
-  }, [trip?.id, trip?.type, useMock]);
+  }, [trip?.id, trip?.type, trip?.travel_type, useMock]);
 
+  const budget = useMemo(() => Number(trip?.budget || 18500), [trip]);
+  const expenseList = useMemo(() => (Array.isArray(expenses) ? expenses : []), [expenses]);
+  const totalExpenses = useMemo(() => expenseList.reduce((sum, item) => sum + Number(item.amount || 0), 0), [expenseList]);
   const filteredEmergency = useMemo(() => emergencyCategory === 'All' ? emergencyLocations : emergencyLocations.filter((item) => item.category === emergencyCategory), [emergencyCategory, emergencyLocations]);
-  const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const budget = Number(trip?.budget || 20000);
 
-  if (!trip) return <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} title="Trip workspace"><div className="travel-panel travel-empty"><h3>No trip selected</h3><p>Choose a trip from the dashboard to open its shared workspace.</p><button className="travel-button" onClick={() => onNavigate('dashboard')}>Back to dashboard</button></div></TravelShell>;
+  const weatherList = useMemo(() => {
+    if (Array.isArray(weather) && weather.length > 0) return weather;
+    return MOCK_WEATHER[destination?.id] || MOCK_WEATHER.default;
+  }, [weather, destination]);
 
-  const optimizeItinerary = async () => { setOptimizing(true); const response = await aiService.optimizeItinerary(trip); setItinerary(response.itinerary); setOptimizing(false); };
-  const optimizeBudget = async () => setBudgetAdvice(await aiService.optimizeBudget(trip));
+  const summaryData = summary || MOCK_AI_SUMMARY;
+  const itineraryList = Array.isArray(itinerary) ? itinerary : MOCK_ITINERARY;
+
+  const optimizeItinerary = async () => { setOptimizing(true); const result = await aiService.optimizeItinerary(); setItinerary(result.itinerary); setOptimizing(false); };
+  const optimizeBudget = async () => { const advice = await aiService.optimizeBudget(trip); setBudgetAdvice(advice); };
+
   const saveExpense = async (event) => {
     event.preventDefault();
     if (!expenseForm.description || !expenseForm.amount) return;
-    const input = { ...expenseForm, date: new Date().toISOString().split('T')[0] };
+    const payload = {
+      description: expenseForm.description,
+      category: expenseForm.category,
+      amount: Number(expenseForm.amount),
+      paidBy: expenseForm.paidBy,
+      date: expenseForm.date || new Date().toISOString().split('T')[0]
+    };
     try {
-      const saved = editingExpenseId && !useMock ? await expenseService.update(editingExpenseId, input) : await expenseService.create(trip.id, input);
-      setExpenses((current) => editingExpenseId ? current.map((expense) => expense.id === editingExpenseId ? saved : expense) : [saved, ...current]);
-      if (useMock) onUpdateTrip({ ...trip, expenses: editingExpenseId ? expenses.map((expense) => expense.id === editingExpenseId ? saved : expense) : [saved, ...expenses] });
-      setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: 'Sarah' });
+      let saved = { ...payload, id: editingExpenseId || `e-${Date.now()}` };
+      if (!useMock && trip?.id) {
+        saved = editingExpenseId ? await expenseService.update(editingExpenseId, payload) : await expenseService.create(trip.id, payload);
+      }
+      const nextExpenses = editingExpenseId ? expenseList.map((item) => (item.id === editingExpenseId ? saved : item)) : [saved, ...expenseList];
+      setExpenses(nextExpenses);
+      if (onUpdateTrip) onUpdateTrip({ ...trip, expenses: nextExpenses });
+      setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: currentUserName, date: new Date().toISOString().split('T')[0] });
       setEditingExpenseId(null);
       setShowExpenseForm(false);
-    } catch (error) { console.error('Failed to persist trip expense:', error); }
+    } catch (error) { console.error('Failed to save trip expense:', error); }
   };
-  const editExpense = (expense) => { setExpenseForm({ description: expense.description, category: expense.category, amount: String(expense.amount), paidBy: expense.paidBy?.name || expense.paidBy || 'You' }); setEditingExpenseId(expense.id); setShowExpenseForm(true); };
-  const deleteExpense = async (expenseId) => {
+
+  const editExpense = (expense) => {
+    setEditingExpenseId(expense.id);
+    const paidByName = typeof expense.paidBy === 'object' ? (expense.paidBy?.name || currentUserName) : (expense.paidBy || currentUserName);
+    setExpenseForm({
+      description: expense.description,
+      category: expense.category,
+      amount: expense.amount,
+      paidBy: paidByName,
+      date: expense.date || new Date().toISOString().split('T')[0]
+    });
+    setShowExpenseForm(true);
+  };
+
+  const deleteExpense = async (id) => {
     try {
-      if (!useMock) await expenseService.remove(expenseId);
-      const nextExpenses = expenses.filter((expense) => expense.id !== expenseId);
+      if (!useMock && trip?.id) await expenseService.remove(id);
+      const nextExpenses = expenseList.filter((item) => item.id !== id);
       setExpenses(nextExpenses);
-      if (useMock) onUpdateTrip({ ...trip, expenses: nextExpenses });
+      if (onUpdateTrip) onUpdateTrip({ ...trip, expenses: nextExpenses });
     } catch (error) { console.error('Failed to delete trip expense:', error); }
   };
+
   const sendChat = async (event, suggested = null) => { 
     event?.preventDefault(); 
     const messageText = (suggested || chatInput).trim(); 
     if (!messageText || chatLoading) return; 
     setChatInput(''); 
     
-    if (useMock) {
-      setMessages((current) => [...current, { id: Date.now(), user: 'Sarah', initials: 'SJ', time: 'now', message: messageText, color: 'teal' }]); 
-      setChatLoading(true); 
-      const response = await aiService.chat(messageText, { trip, destination }); 
-      setMessages((current) => [...current, { ...response, id: Date.now() + 1, time: 'now' }]); 
-      setChatLoading(false); 
-    } else {
+    // Add user's message using current user's profile identity
+    setMessages((current) => [...current, { id: Date.now(), user: currentUserName, initials: currentUserInitials, time: 'now', message: messageText, color: 'rose' }]); 
+
+    const isGroupTrip = (trip?.type || '').toLowerCase() === 'group' || (trip?.members && trip.members.length > 1);
+    
+    // Exact word boundary regex matching for explicit AI tags (@ai, ai, /ai, @bot, bot) or suggested chips
+    const isExplicitAiRequest = Boolean(suggested) || /\b@?(ai|bot)\b/i.test(messageText) || /^\s*\/ai\b/i.test(messageText);
+
+    // In a Group Trip, AI ONLY replies when explicitly invoked via suggested prompt or @ai/@bot/ai tag
+    const shouldAiReply = !isGroupTrip || isExplicitAiRequest;
+
+    if (shouldAiReply) {
+      if (useMock) {
+        setChatLoading(true); 
+        const response = await aiService.chat(messageText, { trip, destination }); 
+        setMessages((current) => [...current, { ...response, id: Date.now() + 1, time: 'now' }]); 
+        setChatLoading(false); 
+      } else {
+        chatService.sendMessage(wsRef.current, messageText);
+      }
+    } else if (!useMock && wsRef.current) {
       chatService.sendMessage(wsRef.current, messageText);
     }
   };
+
   const updateEmergency = (category) => { setEmergencyCategory(category); setEmergencyLocations(MOCK_EMERGENCY_LOCATIONS); };
 
+  if (!trip) {
+    return (
+      <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="My Trips" title="Trip workspace">
+        <div className="travel-panel travel-empty">
+          <h3>No trip selected</h3>
+          <p>Please select a trip from your dashboard to view its workspace.</p>
+          <button className="travel-button" onClick={() => onNavigate('dashboard')}>Go to Dashboard</button>
+        </div>
+      </TravelShell>
+    );
+  }
+
+  const destinationTitle = destination?.name || (typeof trip.destination === 'string' ? trip.destination : (trip.title || 'Trip Workspace'));
+  const tripMembers = Array.isArray(trip.members) ? trip.members : [];
+
   return <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="My Trips" title="Trip workspace">
-    <div className="travel-workspace-header"><div><span className="travel-kicker">{trip.type} trip · {trip.status}</span><h2>{destination.name}</h2><p>{trip.dates} · {trip.members?.length || 1} traveler{(trip.members?.length || 1) === 1 ? '' : 's'} · Shared workspace</p></div><div className="travel-workspace-actions"><button className="travel-button travel-button-ghost" onClick={() => onNavigate('dashboard')}><ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> All trips</button><button className="travel-button travel-button-ghost" onClick={() => onNavigate('ask-question', { destination: trip.destination, category: 'Destinations', tripContext: { travelers: trip.members?.length || 1, budget: trip.budget, dates: trip.dates } })}>Ask Community</button><button className="travel-button" onClick={() => { setActiveTab('emergency'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>🚨 Emergency</button></div></div>
+    <div className="travel-workspace-header"><div><span className="travel-kicker">{trip.type || 'Group'} trip · {trip.status || 'Planning'}</span><h2>{destinationTitle}</h2><p>{trip.dates || 'Dates to be confirmed'} · {tripMembers.length || 1} traveler{(tripMembers.length || 1) === 1 ? '' : 's'} · Shared workspace</p></div><div className="travel-workspace-actions"><button className="travel-button travel-button-ghost" onClick={() => onNavigate('dashboard')}><ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> All trips</button><button className="travel-button travel-button-ghost" onClick={() => onNavigate('ask-question', { destination: destinationTitle, category: 'Destinations', tripContext: { travelers: tripMembers.length || 1, budget: trip.budget, dates: trip.dates } })}>Ask Community</button><button className="travel-button" onClick={() => { setActiveTab('emergency'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>🚨 Emergency</button></div></div>
     <div className="travel-workspace-tabs" role="tablist">{tabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)} role="tab" aria-selected={activeTab === tab.id}>{tab.icon}{tab.label}</button>)}</div>
 
     {activeTab === 'overview' && <div className="travel-grid" style={{ gap: 17 }}>
-      <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{trip.members?.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weather[0]?.temp}°C</strong><span>{weather[0]?.label}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summary.intensity}</strong><span>{summary.activities} recommended activities</span></div></div>
-      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summary.headline}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summary.budget], ['Weather', summary.weather], ['Intensity', summary.intensity]].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{(summary.insights || []).map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weather.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day.split(',')[0]}</small><small style={{ color: day.rain > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
+      <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{tripMembers.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weatherList[0]?.temp ?? 28}°C</strong><span>{weatherList[0]?.label ?? 'Clear'}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summaryData.intensity || 'Moderate'}</strong><span>{summaryData.activities || 7} recommended activities</span></div></div>
+      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summaryData.headline || 'Trip Summary'}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summaryData.budget || 'Balanced'], ['Weather', summaryData.weather || 'Favorable'], ['Intensity', summaryData.intensity || 'Moderate']].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{(summaryData.insights || []).map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weatherList.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day?.split?.(',')[0] || day.day}</small><small style={{ color: (day.rain || 0) > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain || 0}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
       <div className="travel-grid travel-grid-2">
         <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div><span className="travel-pill green">94% match</span></div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.</p></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 17 }}>
@@ -177,16 +245,21 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="travel-button" style={{ padding: '4px 8px', fontSize: 11 }} onClick={async () => {
-                        const { apiClient } = await import('../services/apiClient');
-                        await apiClient.patch(`/api/v1/trips/${trip.id}/join-requests/${req.id}`, { status: 'approved' });
-                        setJoinRequests(joinRequests.map(r => r.id === req.id ? { ...r, status: 'approved' } : r));
-                        // update trip members locally
-                        onUpdateTrip({ ...trip, members: [...(trip.members || []), { id: req.user_id, role: 'member', name: req.user?.full_name || 'Traveler', initial: (req.user?.full_name || 'T')[0].toUpperCase(), bg: 'bg-teal-primary/20 text-teal-primary' }] });
+                        try {
+                          await tripService.updateJoinRequest(trip.id, req.id, 'approved');
+                          setJoinRequests(joinRequests.map(r => r.id === req.id ? { ...r, status: 'approved' } : r));
+                          if (onUpdateTrip) onUpdateTrip({ ...trip, members: [...tripMembers, { id: req.user_id, role: 'member', name: req.user?.full_name || req.user?.username || 'Traveler', initial: (req.user?.full_name || req.user?.username || 'T')[0].toUpperCase(), bg: 'bg-teal-primary/20 text-teal-primary' }] });
+                        } catch (err) {
+                          console.error('Failed to approve join request:', err);
+                        }
                       }}>Approve</button>
                       <button className="travel-button" style={{ padding: '4px 8px', fontSize: 11, background: '#e63946', color: '#fff' }} onClick={async () => {
-                        const { apiClient } = await import('../services/apiClient');
-                        await apiClient.patch(`/api/v1/trips/${trip.id}/join-requests/${req.id}`, { status: 'rejected' });
-                        setJoinRequests(joinRequests.map(r => r.id === req.id ? { ...r, status: 'rejected' } : r));
+                        try {
+                          await tripService.updateJoinRequest(trip.id, req.id, 'rejected');
+                          setJoinRequests(joinRequests.map(r => r.id === req.id ? { ...r, status: 'rejected' } : r));
+                        } catch (err) {
+                          console.error('Failed to reject join request:', err);
+                        }
                       }}>Reject</button>
                     </div>
                   </div>
@@ -194,18 +267,21 @@ export default function TripWorkspacePage({ onNavigate, trip, onUpdateTrip, them
               </div>
             </div>
           )}
-          <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">People in this space</span><h2>{trip.type === 'Group' ? 'Group crew' : 'Trip Assistant'}</h2></div><Users size={18} color="#2d6a4f" /></div><div className="travel-avatar-stack" style={{ marginTop: 15 }}>{(trip.members || []).map((member, index) => <span className={`avatar avatar-${['teal', 'amber', 'blue', 'purple'][index % 4]}`} key={member.id}>{member.initial}</span>)}</div><p style={{ color: 'var(--travel-muted)', fontSize: 11, marginBottom: 0, marginTop: 9 }}>{trip.type === 'Group' ? 'Everyone sees the same itinerary, budget and map.' : 'Ask the assistant to adjust your plan as you travel.'}</p></div>
+          <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">People in this space</span><h2>{trip.type === 'Group' ? 'Group crew' : 'Trip Assistant'}</h2></div><Users size={18} color="#2d6a4f" /></div><div className="travel-avatar-stack" style={{ marginTop: 15 }}>{tripMembers.map((member, index) => <span className={`avatar avatar-${['teal', 'amber', 'blue', 'purple'][index % 4]}`} key={member.id || index}>{member.initial || 'T'}</span>)}</div><p style={{ color: 'var(--travel-muted)', fontSize: 11, marginBottom: 0, marginTop: 9 }}>{trip.type === 'Group' ? 'Everyone sees the same itinerary, budget and map.' : 'Ask the assistant to adjust your plan as you travel.'}</p></div>
         </div>
       </div>
     </div>}
 
-    {activeTab === 'itinerary' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itinerary.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{day.items.map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destination.name}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
+    {activeTab === 'itinerary' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itineraryList.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{(day.items || []).map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destinationTitle}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
 
-    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Live Places API</span></div><TravelMap location={destination} itinerary={itinerary.flatMap(day => day.items || [])} height="570px" /></div>}
+    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Live Places API</span></div><TravelMap location={destination} itinerary={(itinerary || []).flatMap(day => day.items || [])} height="570px" /></div>}
 
-    {activeTab === 'budget' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared budget</h2><p>Track expenses now; settle with the future backend later.</p></div><button className="travel-button" onClick={() => { setEditingExpenseId(null); setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: 'Sarah' }); setShowExpenseForm(!showExpenseForm); }}><Plus size={14} /> Add expense</button></div><div className="travel-panel travel-panel-pad"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}><div><span className="travel-stat-label">Spent so far</span><strong style={{ display: 'block', font: '700 28px var(--font-mono)', marginTop: 9 }}>৳{totalExpenses.toLocaleString()}</strong></div><span className="travel-pill green">{Math.round((totalExpenses / (budget || 1)) * 100)}% allocated</span></div><div className="travel-progress" style={{ marginTop: 16 }}><span style={{ width: `${Math.min(100, (totalExpenses / (budget || 1)) * 100)}%` }} /></div>{showExpenseForm && <form onSubmit={saveExpense} className="travel-form-grid" style={{ marginTop: 20, borderTop: '1px solid var(--travel-border)', paddingTop: 18 }}><div className="travel-field"><label htmlFor="expense-description">Description</label><input id="expense-description" className="travel-input" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="e.g. Beach dinner" required /></div><div className="travel-field"><label htmlFor="expense-amount">Amount (৳)</label><input id="expense-amount" type="number" className="travel-input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="1200" required /></div><div className="travel-field"><label htmlFor="expense-category">Category</label><select id="expense-category" className="travel-select" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Food</option><option>Lodging</option><option>Transport</option><option>Activity</option><option>Shopping</option><option>Emergency</option><option>Other</option></select></div><div className="travel-field"><label htmlFor="expense-paid-by">Paid by</label><select id="expense-paid-by" className="travel-select" value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}><option>Sarah</option><option>Abrar</option><option>Huzaifa</option><option>Faizul</option><option>Munzeer</option></select></div><button className="travel-button" type="submit">{editingExpenseId ? 'Update expense' : 'Save expense'}</button></form>}</div><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><span className="travel-card-kicker">Expense ledger</span>{expenses.map((expense) => <div className="travel-expense-row" key={expense.id}><span><strong>{expense.description}</strong><small>{expense.category} · paid by {typeof expense.paidBy === 'object' ? expense.paidBy?.name : expense.paidBy}</small></span><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="travel-expense-amount">৳{Number(expense.amount).toLocaleString()}</span><button className="travel-link" style={{ padding: 0, fontSize: 10 }} onClick={() => editExpense(expense)}>Edit</button><button className="travel-remove" style={{ padding: 0 }} onClick={() => deleteExpense(expense.id)}>Delete</button></span></div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Optimize budget</span><h3>Keep ৳{Math.max(0, budget - totalExpenses).toLocaleString()} flexible.</h3><p>Ask the mock planner to find savings while protecting the parts of your trip that matter most.</p><button className="travel-button" style={{ marginTop: 15 }} onClick={optimizeBudget}><Sparkles size={14} /> Optimize budget</button>{budgetAdvice && <div style={{ marginTop: 20 }}><div className="travel-pill green">Potential savings: ৳{budgetAdvice.savings.toLocaleString()}</div><ul className="travel-insight-list">{budgetAdvice.recommendations.map((item) => <li key={item.label}>{item.label} <strong style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>− ৳{item.amount}</strong></li>)}</ul><button className="travel-link" style={{ padding: 0, marginTop: 12 }} onClick={() => setBudgetAdvice(null)}>Applied to mock state ✓</button></div>}</div></div>}
+    {activeTab === 'budget' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared budget</h2><p>Track expenses now; settle with the group easily.</p></div><button className="travel-button" onClick={() => { setEditingExpenseId(null); setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: currentUserName }); setShowExpenseForm(!showExpenseForm); }}><Plus size={14} /> Add expense</button></div><div className="travel-panel travel-panel-pad"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}><div><span className="travel-stat-label">Spent so far</span><strong style={{ display: 'block', font: '700 28px var(--font-mono)', marginTop: 9 }}>৳{totalExpenses.toLocaleString()}</strong></div><span className="travel-pill green">{Math.round((totalExpenses / (budget || 1)) * 100)}% allocated</span></div><div className="travel-progress" style={{ marginTop: 16 }}><span style={{ width: `${Math.min(100, (totalExpenses / (budget || 1)) * 100)}%` }} /></div>{showExpenseForm && <form onSubmit={saveExpense} className="travel-form-grid" style={{ marginTop: 20, borderTop: '1px solid var(--travel-border)', paddingTop: 18 }}><div className="travel-field"><label htmlFor="expense-description">Description</label><input id="expense-description" className="travel-input" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="e.g. Beach dinner" required /></div><div className="travel-field"><label htmlFor="expense-amount">Amount (৳)</label><input id="expense-amount" type="number" className="travel-input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="1200" required /></div><div className="travel-field"><label htmlFor="expense-category">Category</label><select id="expense-category" className="travel-select" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Food</option><option>Lodging</option><option>Transport</option><option>Activity</option><option>Shopping</option><option>Emergency</option><option>Other</option></select></div><div className="travel-field"><label htmlFor="expense-paid-by">Paid by</label><select id="expense-paid-by" className="travel-select" value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}><option>{currentUserName}</option><option>Sarah</option><option>Abrar</option><option>Huzaifa</option><option>Faizul</option><option>Munzeer</option></select></div><button className="travel-button" type="submit">{editingExpenseId ? 'Update expense' : 'Save expense'}</button></form>}</div><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><span className="travel-card-kicker">Expense ledger</span>{expenseList.map((expense) => <div className="travel-expense-row" key={expense.id}><span><strong>{expense.description}</strong><small>{expense.category} · paid by {typeof expense.paidBy === 'object' ? expense.paidBy?.name : expense.paidBy}</small></span><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="travel-expense-amount">৳{Number(expense.amount).toLocaleString()}</span><button className="travel-link" style={{ padding: 0, fontSize: 10 }} onClick={() => editExpense(expense)}>Edit</button><button className="travel-remove" style={{ padding: 0 }} onClick={() => deleteExpense(expense.id)}>Delete</button></span></div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Optimize budget</span><h3>Keep ৳{Math.max(0, budget - totalExpenses).toLocaleString()} flexible.</h3><p>Ask the planner to find savings while protecting the parts of your trip that matter most.</p><button className="travel-button" style={{ marginTop: 15 }} onClick={optimizeBudget}><Sparkles size={14} /> Optimize budget</button>{budgetAdvice && <div style={{ marginTop: 20 }}><div className="travel-pill green">Potential savings: ৳{budgetAdvice.savings.toLocaleString()}</div><ul className="travel-insight-list">{(budgetAdvice.recommendations || []).map((item) => <li key={item.label}>{item.label} <strong style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>− ৳{item.amount}</strong></li>)}</ul><button className="travel-link" style={{ padding: 0, marginTop: 12 }} onClick={() => setBudgetAdvice(null)}>Applied to trip plan ✓</button></div>}</div></div>}
 
-    {activeTab === 'chat' && <div className="travel-grid travel-grid-2"><div className="travel-panel travel-chat">{chatStatus === 'reconnecting' && <div className="travel-alert" role="status"><span>Reconnecting to chat…</span></div>}<div className="travel-chat-list">{messages.map((message) => <div key={message.id} className={`travel-message ${message.user === 'Sarah' ? 'mine' : ''} ${message.ai ? 'ai' : ''}`}><span className={`avatar avatar-${message.color || 'teal'}`}>{message.initials}</span><div className="travel-message-body"><strong>{message.ai ? '✦ AI Assistant' : message.user}</strong><p>{message.message}</p><time>{message.time}</time></div></div>)}{chatLoading && <div className="travel-message ai"><span className="avatar avatar-teal">✦</span><div className="travel-message-body"><strong>✦ AI Assistant</strong><p>Thinking through your trip…</p></div></div>}</div><div className="travel-chat-prompts">{['✨ Optimize our itinerary', '💰 How much budget remains?', '🌦 What if it rains?', '🍴 Where should we eat?', '📍 What is nearby?'].map((prompt) => <button key={prompt} onClick={() => sendChat(null, prompt)}>{prompt}</button>)}</div><form className="travel-chat-form" onSubmit={sendChat}><input className="travel-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={trip.type === 'Group' ? 'Message your group…' : 'Ask your trip assistant…'} /><button className="travel-button" aria-label="Send message"><Send size={14} /></button></form></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">{trip.type === 'Group' ? '✦ Group chat' : '✦ Trip Assistant'}</span><h3>{trip.type === 'Group' ? 'Plan together, lightly.' : 'A calm co-pilot for the road.'}</h3><p>{trip.type === 'Group' ? 'Everyone in the group can see the same plan. The assistant can answer with your itinerary and budget as context.' : 'Ask about food, weather, nearby places or the next best move. The chat service is already isolated for a future /api/ai/chat call.'}</p><div className="travel-alert" style={{ marginTop: 18 }}><Bot size={16} color="#2d6a4f" /><span>AI replies are mock responses in this frontend stage.</span></div></div></div>}
+    {activeTab === 'chat' && <div className="travel-grid travel-grid-2"><div className="travel-panel travel-chat">{chatStatus === 'reconnecting' && <div className="travel-alert" role="status"><span>Reconnecting to chat…</span></div>}<div className="travel-chat-list">{messages.map((message) => {
+      const isMine = !message.ai && (message.user === currentUserName || message.user?.toLowerCase() === currentUserName.toLowerCase() || (currentUserName.toLowerCase().includes('abrar') && message.user === 'Abrar') || (currentUserName.toLowerCase().includes('munzeer') && message.user === 'Munzeer'));
+      return <div key={message.id} className={`travel-message ${isMine ? 'mine' : ''} ${message.ai ? 'ai' : ''}`}><span className={`avatar avatar-${message.color || 'teal'}`}>{message.initials || '✦'}</span><div className="travel-message-body"><strong>{message.ai ? '✦ AI Assistant' : message.user}</strong><p>{message.message}</p><time>{message.time || 'now'}</time></div></div>;
+    })}{chatLoading && <div className="travel-message ai"><span className="avatar avatar-teal">✦</span><div className="travel-message-body"><strong>✦ AI Assistant</strong><p>Thinking through your trip…</p></div></div>}</div><div className="travel-chat-prompts">{['✨ Optimize our itinerary', '💰 How much budget remains?', '🌦 What if it rains?', '🍴 Where should we eat?', '📍 What is nearby?'].map((prompt) => <button key={prompt} onClick={() => sendChat(null, prompt)}>{prompt}</button>)}</div><form className="travel-chat-form" onSubmit={sendChat}><input className="travel-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={trip.type === 'Group' ? 'Message your group (mention @ai to ask AI)…' : 'Ask your trip assistant…'} /><button className="travel-button" aria-label="Send message"><Send size={14} /></button></form></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">{trip.type === 'Group' ? '✦ Group chat' : '✦ Trip Assistant'}</span><h3>{trip.type === 'Group' ? 'Plan together, lightly.' : 'A calm co-pilot for the road.'}</h3><p>{trip.type === 'Group' ? 'Everyone in the group can see the same plan. Mention @ai when you need AI guidance.' : 'Ask about food, weather, nearby places or the next best move.'}</p><div className="travel-alert" style={{ marginTop: 18 }}><Bot size={16} color="#2d6a4f" /><span>Collaborate in real time with group members and AI.</span></div></div></div>}
 
     {activeTab === 'emergency' && <div><div className="travel-panel travel-panel-pad travel-emergency-hero"><h2>Emergency assistance</h2><p>Nearby help stays visible while you travel with one-tap directions and emergency phone contacts.</p><div className="travel-emergency-quick">{[['Hospital', '🏥'], ['Pharmacy', '💊'], ['Police', '🚓'], ['Fire Station', '🚒'], ['All', '📍']].map(([label, icon]) => <button key={label} onClick={() => updateEmergency(label)}><span>{icon}</span>{label === 'Fire Station' ? 'Fire' : label}</button>)}</div></div><div className="travel-grid travel-grid-2" style={{ marginTop: 17 }}><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">{filteredEmergency.length} nearby locations</span><h2>Emergency contacts</h2></div><Phone size={18} color="#c95b43" /></div><div className="travel-emergency-list" style={{ marginTop: 14 }}>{filteredEmergency.slice(0, 8).map((item) => <div className="travel-emergency-row" key={item.id}><span className="avatar" style={{ background: '#fff0ec', fontSize: 18 }}>{emergencyIcon[item.category] || '🚑'}</span><div><strong>{item.name}</strong><small>{item.category} · {item.distance_km ? `${item.distance_km} km` : item.distance || '0.5 km'} away</small><small>{item.address} · {item.phone}</small></div><div className="travel-emergency-actions"><button onClick={() => { if (item.phone) window.location.href = `tel:${item.phone.replace(/[^0-9+]/g, '')}`; else alert('No direct phone number listed for this contact.'); }}><Phone size={12} /> Call</button><button onClick={() => { const target = item.latitude && item.longitude ? `${item.latitude},${item.longitude}` : encodeURIComponent(`${item.name}, ${item.address || ''}`); window.open(`https://www.google.com/maps/dir/?api=1&destination=${target}`, '_blank', 'noopener,noreferrer'); }}><MapPinned size={12} /> Directions</button></div></div>)}</div></div><div><TravelMap location={destination} emergencyLocations={filteredEmergency} mapCategories={['All', 'Hospital', 'Pharmacy', 'Police', 'Fire']} height="500px" /><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><span className="avatar" style={{ background: '#fff0ec', fontSize: 18 }}>📞</span><span><strong style={{ display: 'block', fontSize: 12 }}>Local emergency number</strong><small style={{ display: 'block', color: 'var(--travel-muted)', fontSize: 10, marginTop: 3 }}>Call 999 for police, ambulance or fire service in Bangladesh.</small></span><button className="travel-button" style={{ marginLeft: 'auto', background: '#c95b43', borderColor: '#c95b43' }} onClick={() => { window.location.href = 'tel:999'; }}><Phone size={13} /> 999</button></div></div></div></div></div>}
   </TravelShell>;

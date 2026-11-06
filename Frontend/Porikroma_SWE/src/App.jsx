@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
@@ -19,11 +19,44 @@ import { BANGLADESH_TRIPS } from './mockData';
 import ProtectedRoute from './contexts/ProtectedRoute';
 import { tripService } from './services/tripService';
 
-function TripRouteWrapper({ Component, tripOnly = false, trips, agentPlans, onNavigate, onGoBack, onSaveAgentPlan, onUpdateTrip, theme, onToggleTheme, toUiTrip }) {
+const toUiTrip = (trip) => {
+  if (!trip) return null;
+  const destName = typeof trip.destination === 'string'
+    ? trip.destination
+    : (trip.destination?.name || trip.title || 'Trip Corridor');
+  return {
+    ...trip,
+    destination: destName,
+    dates: trip.dates || (trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed'),
+    type: trip.type || (trip.travel_type === 'group' ? 'Group' : 'Solo'),
+    budgetPercent: trip.budgetPercent ?? 0,
+    members: (trip.members || []).map((member) => ({
+      id: member.id || member.user_id,
+      name: member.name || member.user?.full_name || member.user?.username || 'Traveler',
+      initial: member.initial || (member.name || member.user?.full_name || member.user?.username || 'T')[0].toUpperCase(),
+      role: member.role || 'Member',
+      bg: member.bg || 'bg-teal-primary/20 text-teal-primary'
+    }))
+  };
+};
+
+function TripRouteWrapper({
+  Component,
+  tripOnly = false,
+  trips = [],
+  onNavigate,
+  onGoBack,
+  agentPlans = {},
+  onSaveAgentPlan,
+  onUpdateTrip,
+  theme,
+  onToggleTheme
+}) {
   const { tripId } = useParams();
-  const activeTrip = trips.find((t) => t.id === String(tripId) || t.id === Number(tripId));
+  const activeTrip = trips.find((t) => String(t.id) === String(tripId));
   const [loadedTrip, setLoadedTrip] = useState(null);
   const [isLoading, setIsLoading] = useState(!activeTrip && !!tripId);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   useEffect(() => {
     if (activeTrip || !tripId) {
@@ -32,32 +65,92 @@ function TripRouteWrapper({ Component, tripOnly = false, trips, agentPlans, onNa
     }
     let active = true;
     setIsLoading(true);
+    setErrorMsg(null);
     tripService.getTrip(tripId)
-      .then((trip) => { if (active) setLoadedTrip(toUiTrip(trip)); })
-      .catch((error) => console.error('Failed to load trip:', error))
-      .finally(() => { if (active) setIsLoading(false); });
-    return () => { active = false; };
-  }, [activeTrip, tripId, toUiTrip]);
+      .then((trip) => {
+        if (active) {
+          setLoadedTrip(toUiTrip(trip));
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          console.error('Failed to load trip:', error);
+          setErrorMsg(error.message || 'Unable to access trip details.');
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTrip, tripId]);
 
   const resolvedTrip = activeTrip || loadedTrip;
 
   if (isLoading) {
-    return <div className="flex h-screen items-center justify-center text-teal-primary text-xl">Loading Trip...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center text-teal-primary text-xl">
+        Loading Trip...
+      </div>
+    );
   }
 
   if (!resolvedTrip && tripId) {
-    return <div className="flex h-screen items-center justify-center text-red-500 text-xl">404 - Trip Not Found</div>;
+    return (
+      <div className="min-h-screen bg-[#F5F6F4]/40 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white border border-border-custom p-8 rounded-xl max-w-md w-full space-y-4 shadow-sm">
+          <h2 className="text-2xl font-serif text-navy font-bold">Access Restricted / Not Found</h2>
+          <p className="text-sm text-navy/70">{errorMsg || 'You do not have permission to view this trip or it does not exist.'}</p>
+          <div className="flex justify-center gap-3 pt-4">
+            <button onClick={() => onNavigate('dashboard')} className="px-4 py-2 bg-teal-primary text-white text-xs font-semibold rounded-lg hover:bg-teal-hover transition-colors">
+              Go to Dashboard
+            </button>
+            <button onClick={() => onNavigate('browse-groups')} className="px-4 py-2 border border-border-custom text-navy text-xs font-semibold rounded-lg hover:bg-fog transition-colors">
+              Browse Public Groups
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (tripOnly) {
-    return <Component onNavigate={onNavigate} onGoBack={onGoBack} trip={resolvedTrip} agentPlan={agentPlans[tripId]} onSaveAgentPlan={onSaveAgentPlan} onUpdateTrip={onUpdateTrip} theme={theme} onToggleTheme={onToggleTheme} />;
+    return (
+      <Component
+        onNavigate={onNavigate}
+        onGoBack={onGoBack}
+        trip={resolvedTrip}
+        agentPlan={agentPlans[tripId]}
+        onSaveAgentPlan={onSaveAgentPlan}
+        onUpdateTrip={onUpdateTrip}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+      />
+    );
   }
-  return <Component onNavigate={onNavigate} onGoBack={onGoBack} trip={resolvedTrip} theme={theme} onToggleTheme={onToggleTheme} />;
+  return (
+    <Component
+      onNavigate={onNavigate}
+      onGoBack={onGoBack}
+      trip={resolvedTrip}
+      theme={theme}
+      onToggleTheme={onToggleTheme}
+    />
+  );
 }
 
 function QuestionRouteWrapper({ onNavigate, onGoBack, theme, onToggleTheme }) {
   const { questionId } = useParams();
-  return <QuestionDetailPage questionId={questionId} onNavigate={onNavigate} onGoBack={onGoBack} theme={theme} onToggleTheme={onToggleTheme} />;
+  return (
+    <QuestionDetailPage
+      questionId={questionId}
+      onNavigate={onNavigate}
+      onGoBack={onGoBack}
+      theme={theme}
+      onToggleTheme={onToggleTheme}
+    />
+  );
 }
 
 export default function App() {
@@ -67,19 +160,10 @@ export default function App() {
   const [agentPlans, setAgentPlans] = useState({});
   const [forumPrefill, setForumPrefill] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('porikroma-theme') || 'light');
-  const [trips, setTrips] = useState(useMock ? BANGLADESH_TRIPS : []);
+  const [trips, setTrips] = useState(useMock ? BANGLADESH_TRIPS.map(toUiTrip) : []);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
 
-  const toUiTrip = useCallback((trip) => ({
-    ...trip,
-    destination: trip.destination?.name || trip.title,
-    dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
-    type: trip.travel_type === 'group' ? 'Group' : 'Solo',
-    budgetPercent: 0,
-    members: (trip.members || []).map((member) => ({ id: member.user_id, name: member.user?.full_name || member.user?.username || 'Traveler', initial: (member.user?.full_name || member.user?.username || 'T')[0].toUpperCase(), role: member.role, bg: 'bg-teal-primary/20 text-teal-primary' }))
-  }), []);
-
-  useEffect(() => {
+  const refreshTrips = useCallback(() => {
     setIsLoadingTrips(true);
     tripService.getTrips()
       .then((data) => setTrips(Array.isArray(data) ? data.map(toUiTrip) : []))
@@ -90,7 +174,11 @@ export default function App() {
       .finally(() => {
         setIsLoadingTrips(false);
       });
-  }, []);
+  }, [useMock]);
+
+  useEffect(() => {
+    refreshTrips();
+  }, [refreshTrips]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -142,7 +230,8 @@ export default function App() {
   const handleCreateTrip = async (newTrip) => {
     try {
       const createdTrip = await tripService.createTrip(newTrip);
-      setTrips((prev) => [toUiTrip(createdTrip), ...prev]);
+      const uiTrip = toUiTrip(createdTrip);
+      setTrips((prev) => [uiTrip, ...prev]);
       navigate(`/trips/${createdTrip.id}`);
     } catch (err) {
       console.error('Failed to create trip', err);
@@ -153,17 +242,30 @@ export default function App() {
   const handleUpdateTrip = async (updatedTrip) => {
     try {
       const savedTrip = await tripService.updateTrip(updatedTrip.id, updatedTrip);
-      setTrips((prev) => prev.map((t) => (String(t.id) === String(savedTrip.id) ? toUiTrip(savedTrip) : t)));
+      const uiTrip = { ...updatedTrip, ...toUiTrip(savedTrip) };
+      setTrips((prev) => prev.map((t) => (String(t.id) === String(updatedTrip.id) ? uiTrip : t)));
+      return uiTrip;
     } catch (err) {
       console.error('Failed to update trip', err);
-      window.alert(err.message || 'Unable to update the trip. Please try again.');
     }
+  };
+
+  const tripRouteProps = {
+    trips,
+    onNavigate: handleNavigate,
+    onGoBack: handleGoBack,
+    agentPlans,
+    onSaveAgentPlan: handleSaveAgentPlan,
+    onUpdateTrip: handleUpdateTrip,
+    theme,
+    onToggleTheme: toggleTheme
   };
 
   return (
     <Routes>
       <Route path="/" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/login" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="login" theme={theme} onToggleTheme={toggleTheme} />} />
+      <Route path="/auth" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="login" theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/signup" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="signup" theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/register" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="signup" theme={theme} onToggleTheme={toggleTheme} />} />
       
@@ -173,17 +275,27 @@ export default function App() {
         <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} onGoBack={handleGoBack} />} />
         <Route path="/trips" element={<EnhancedDashboardPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/trips/new" element={<EnhancedCreateTripPage onNavigate={handleNavigate} onGoBack={handleGoBack} onCreateTrip={handleCreateTrip} theme={theme} onToggleTheme={toggleTheme} />} />
-        <Route path="/trips/:tripId" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} trips={trips} agentPlans={agentPlans} onNavigate={handleNavigate} onGoBack={handleGoBack} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} toUiTrip={toUiTrip} />} />
-        <Route path="/trips/:tripId/options" element={<TripRouteWrapper Component={PlanOptionsPage} tripOnly={true} trips={trips} agentPlans={agentPlans} onNavigate={handleNavigate} onGoBack={handleGoBack} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} toUiTrip={toUiTrip} />} />
-        <Route path="/trips/:tripId/booking" element={<TripRouteWrapper Component={BookingPage} tripOnly={true} trips={trips} agentPlans={agentPlans} onNavigate={handleNavigate} onGoBack={handleGoBack} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} toUiTrip={toUiTrip} />} />
-        <Route path="/trips/:tripId/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} />} />
-        <Route path="/trips/:tripId/chat" element={<TripRouteWrapper Component={AIChatPage} tripOnly={true} trips={trips} agentPlans={agentPlans} onNavigate={handleNavigate} onGoBack={handleGoBack} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} toUiTrip={toUiTrip} />} />
         
+        {/* Trip Detail & Workspace Routes */}
+        <Route path="/trips/:tripId" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trips/:tripId/details" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trips/:tripId/detail" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trip/:tripId" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trip/:tripId/details" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trip/:tripId/detail" element={<TripRouteWrapper Component={TripWorkspacePage} tripOnly={true} {...tripRouteProps} />} />
+        
+        {/* Nested Trip Sub-Routes */}
+        <Route path="/trips/:tripId/options" element={<TripRouteWrapper Component={PlanOptionsPage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trips/:tripId/booking" element={<TripRouteWrapper Component={BookingPage} tripOnly={true} {...tripRouteProps} />} />
+        <Route path="/trips/:tripId/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} />} />
+        <Route path="/trips/:tripId/chat" element={<TripRouteWrapper Component={AIChatPage} tripOnly={true} {...tripRouteProps} />} />
+        
+        {/* Global Features */}
         <Route path="/groups" element={<BrowseGroupsPage onNavigate={handleNavigate} onGoBack={handleGoBack} />} />
         <Route path="/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} />} />
-        
         <Route path="/ai" element={<AIChatPage onNavigate={handleNavigate} onGoBack={handleGoBack} theme={theme} onToggleTheme={toggleTheme} />} />
         
+        {/* Community Forum */}
         <Route path="/community" element={<CommunityPage onNavigate={handleNavigate} onGoBack={handleGoBack} initialMode={new URLSearchParams(location.search).get('mode') || 'home'} prefill={forumPrefill} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/community/questions/:questionId" element={<QuestionRouteWrapper onNavigate={handleNavigate} onGoBack={handleGoBack} theme={theme} onToggleTheme={toggleTheme} />} />
       </Route>
@@ -193,7 +305,7 @@ export default function App() {
         <Route path="/admin/inventory" element={<AdminInventoryPage onNavigate={handleNavigate} onGoBack={handleGoBack} />} />
       </Route>
       <Route element={<ProtectedRoute allowedRoles={['provider', 'platform_admin']} />}>
-        <Route path="/planner/trips/:tripId" element={<TripRouteWrapper Component={AuthorTourPlanPage} tripOnly={true} trips={trips} agentPlans={agentPlans} onNavigate={handleNavigate} onGoBack={handleGoBack} onSaveAgentPlan={handleSaveAgentPlan} onUpdateTrip={handleUpdateTrip} theme={theme} onToggleTheme={toggleTheme} toUiTrip={toUiTrip} />} />
+        <Route path="/planner/trips/:tripId" element={<TripRouteWrapper Component={AuthorTourPlanPage} tripOnly={true} {...tripRouteProps} />} />
       </Route>
       <Route path="*" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
     </Routes>
