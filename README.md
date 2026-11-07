@@ -4,7 +4,7 @@ Porikroma is a travel planning application with a React/Vite frontend, a FastAPI
 
 ## Repository layout
 
-- `Frontend/Porikroma_SWE` — React/Vite application
+- `Frontend` — React/Vite application
 - `Backend` — FastAPI API, SQLAlchemy models, migrations, and tests
 - `docs` — architecture, database, authorization, API, and feature documentation
 
@@ -27,7 +27,7 @@ Set the backend environment variables in `Backend/.env`. Keep secrets out of Git
 ### Frontend
 
 ```bash
-cd Frontend/Porikroma_SWE
+cd Frontend
 npm install
 cp .env.example .env
 npm run dev
@@ -46,7 +46,7 @@ docker run -d --name porikroma-testdb -e POSTGRES_PASSWORD=test \
 cd Backend
 TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/porikroma_test pytest -q
 
-cd ../Frontend/Porikroma_SWE
+cd ../Frontend
 npm run build
 npm run lint
 ```
