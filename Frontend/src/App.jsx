@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from './contexts/useAuth';
 
 // Route-level code splitting: the landing/auth pages load first, everything else on demand.
 const BrowseGroupsPage = lazy(() => import('./pages/BrowseGroupsPage'));

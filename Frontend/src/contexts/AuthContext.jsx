@@ -1,8 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AuthContext } from './useAuth';
 import { supabase } from '../services/supabase';
 import { apiClient } from '../services/apiClient';
-
-const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -95,10 +94,4 @@ export function AuthProvider({ children }) {
   }), [user, session, profile, roles, loading, logout, fetchProfileAndRole]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used inside <AuthProvider>');
-  return context;
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, Bot, Calendar, Compass, CreditCard, LogOut, Menu, MessageCircle, Settings, User, Users, X } from 'lucide-react';
 import LogoIcon from './LogoIcon';
 import ThemeToggle from './ThemeToggle';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 export default function TravelShell({ children, onNavigate, onGoBack, theme, onToggleTheme, active = 'Dashboard', title = 'Your travel map' }) {
   const [open, setOpen] = useState(false);

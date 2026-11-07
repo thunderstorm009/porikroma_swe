@@ -4,7 +4,7 @@ import {
   Search, Plus, X, Bed, Car, Ticket, Check, ShieldCheck, LogOut, Map
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { BANGLADESH_HOTELS, BANGLADESH_VEHICLES, BANGLADESH_TICKETS } from '../mockData';
 
 // Pre-filtered ACTIVE inventory pool (from Bangladesh inventory database)

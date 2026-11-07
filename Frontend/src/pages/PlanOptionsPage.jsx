@@ -5,7 +5,7 @@ import {
   Hotel, Car, Ticket, RefreshCw, X, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) {
   const { user, profile, logout } = useAuth();

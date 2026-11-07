@@ -11,6 +11,33 @@ import httpx
 from app.core.config import get_settings
 
 
+def parse_json_object(raw: str) -> dict:
+    """Pull the JSON object out of an LLM reply.
+
+    Models often wrap JSON in prose or ```json fences; take the outermost {...}.
+    Raises ValueError when there is no usable object.
+    """
+    if not isinstance(raw, str):
+        raise ValueError("AI reply is not text")
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        raise ValueError("AI reply contains no JSON object")
+    value = json.loads(raw[start:end + 1])
+    if not isinstance(value, dict):
+        raise ValueError("AI reply JSON is not an object")
+    return value
+
+
+def string_list(value, fallback: list[str] | None = None) -> list[str]:
+    """A list of non-empty strings, whatever shape the model returned."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return list(fallback or [])
+    items = [str(item).strip() for item in value if item is not None and str(item).strip()]
+    return items or list(fallback or [])
+
+
 def _mock_chat(message: str, context: dict) -> str:
     destination = context.get("destination", "your destination")
     budget = context.get("budget")
@@ -67,8 +94,8 @@ def trip_plan(destination: str, start_date: date, end_date: date, budget: Decima
     if get_settings().ai_provider in {"openai", "groq"}:
         raw = generate_text(json.dumps({"destination": destination, "start_date": start_date, "end_date": end_date, "budget": budget, "interests": interests, "travel_style": travel_style}, default=str), system="Return only JSON matching {summary:string, estimated_budget:number, days:[{day:number,date:YYYY-MM-DD,activities:[object]}]}.")
         try:
-            return json.loads(raw.replace("```json", "").replace("```", "").strip())
-        except (json.JSONDecodeError, TypeError) as exc:
+            return parse_json_object(raw)
+        except ValueError as exc:  # json.JSONDecodeError is a ValueError
             raise RuntimeError("AI returned an invalid trip plan") from exc
     days = []
     current = start_date

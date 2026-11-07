@@ -5,7 +5,7 @@ import {
   Hotel, Car, Ticket, Loader2, ArrowRight, CheckCircle2, ShieldCheck, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 export default function BookingPage({ onNavigate, trip }) {
   const { user, profile, logout } = useAuth();

@@ -9,7 +9,7 @@ import {
 import LogoIcon from '../components/LogoIcon';
 import { BANGLADESH_PERSONAL_EXPENSES, BANGLADESH_GROUP_EXPENSES } from '../mockData';
 import { expenseService } from '../services/expenseService';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 // Pre-defined category icons & color tokens for horizontal breakdown
 const CATEGORIES = {

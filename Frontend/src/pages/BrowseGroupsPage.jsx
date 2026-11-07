@@ -5,7 +5,7 @@ import {
   X, Check, Loader2, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { tripService } from '../services/tripService';
 
 export default function BrowseGroupsPage({ onNavigate }) {

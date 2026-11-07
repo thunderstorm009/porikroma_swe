@@ -9,7 +9,7 @@ import { emergencyService } from '../services/emergencyService';
 import { weatherService } from '../services/weatherService';
 import { expenseService } from '../services/expenseService';
 import { tripService } from '../services/tripService';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 const tabs = [
   { id: 'overview', label: 'Overview', icon: <Sparkles size={14} /> },

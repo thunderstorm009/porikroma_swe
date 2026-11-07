@@ -3,7 +3,7 @@ import { Bot, Send, Sparkles } from 'lucide-react';
 import TravelShell from '../components/TravelShell';
 import FormattedMarkdown from '../components/FormattedMarkdown';
 import { aiService } from '../services/aiService';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 
 const prompts = ['✨ Plan my trip', '📍 Recommend places', '💰 Optimize my budget', '🌦 Weather advice', '🍴 Recommend restaurants', '🏨 Recommend hotels', '🗓 Improve my itinerary', '🎒 Packing suggestions'];
 

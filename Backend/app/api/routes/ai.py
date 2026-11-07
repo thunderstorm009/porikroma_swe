@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import logging
 from decimal import Decimal
 from uuid import UUID
@@ -27,9 +26,11 @@ from app.schemas import (
     TripPlanRequest,
     TripPlanResponse,
 )
-from app.services.ai_service import chat, generate_text, trip_plan
+from app.services.ai_service import chat, generate_text, parse_json_object, string_list, trip_plan
 from app.services.authorization import require_trip_access, require_trip_member
 from app.services.rate_limit import check_ai_rate_limit
+
+BUDGET_FALLBACK = ["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."]
 
 router = APIRouter(prefix="/ai", tags=["AI"], dependencies=[Depends(check_ai_rate_limit)])
 logger = logging.getLogger("porikroma.ai")
@@ -92,12 +93,11 @@ def optimize_budget(payload: BudgetOptimizationRequest, current_user: Authentica
     prompt = f"Trip to {trip.destination.name if trip.destination else trip.title}. Total budget: {trip.budget}. Spent so far: {spent}. Suggest 2 realistic budget optimization strategies to save money."
     try:
         system = "Return ONLY valid JSON matching exactly: {\"recommendations\":[\"...\", \"...\"]}"
-        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
-        result_dict = json.loads(raw)
-        recommendations = result_dict.get("recommendations", ["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."])
-    except Exception:
-        logger.warning("AI budget-optimization generation failed, using fallback recommendations", exc_info=True)
-        recommendations = ["Group nearby activities to reduce transport cost.", "Keep a clearly reserved emergency buffer."]
+        result_dict = parse_json_object(generate_text(prompt, system=system))
+        recommendations = string_list(result_dict.get("recommendations"), BUDGET_FALLBACK)
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("AI budget-optimization unavailable (%s), using fallback recommendations", type(exc).__name__)
+        recommendations = BUDGET_FALLBACK
         
     result = BudgetOptimizationResponse(current_status="over budget" if remaining < 0 else "within budget", potential_savings=potential.quantize(Decimal("0.01")), recommendations=recommendations)
     return {"data": result}
@@ -113,12 +113,17 @@ def trip_summary(payload: BudgetOptimizationRequest, current_user: Authenticated
     
     try:
         system = "Return ONLY valid JSON matching exactly: {\"headline\":\"...\", \"budget\":\"...\", \"weather\":\"...\", \"intensity\":\"...\", \"insights\":[\"...\"]}"
-        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
-        result = json.loads(raw)
-        text_summary = result.get("headline", f"{trip.title} summary")
-        full_result = result
-    except Exception:
-        logger.warning("AI trip-summary generation failed, using fallback summary", exc_info=True)
+        result = parse_json_object(generate_text(prompt, system=system))
+        text_summary = str(result.get("headline") or f"{trip.title} summary")
+        full_result = {
+            "headline": text_summary,
+            "budget": str(result.get("budget") or f"{spent} / {trip.budget}"),
+            "weather": str(result.get("weather") or "Check local forecast"),
+            "intensity": str(result.get("intensity") or "Moderate"),
+            "insights": string_list(result.get("insights")),
+        }
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("AI trip-summary unavailable (%s), using fallback summary", type(exc).__name__)
         text_summary = f"{trip.title}: {trip.travel_type} travel with budget {trip.budget}, {spent} spent."
         full_result = {"headline": text_summary, "budget": f"{spent} / {trip.budget}", "weather": "Check local forecast", "intensity": "Moderate", "insights": ["Keep one flexible weather window.", "Track expenses closely."]}
         
@@ -169,8 +174,8 @@ def ai_forum_answer(payload: ForumAIRequest, profile: Profile = Depends(get_curr
     
     try:
         ai_content = generate_text(prompt, system="You are an expert travel assistant. Provide a practical and safe answer.").strip()
-    except Exception:
-        logger.warning("AI forum-answer generation failed, using fallback answer", exc_info=True)
+    except RuntimeError as exc:
+        logger.warning("AI forum-answer unavailable (%s), using fallback answer", type(exc).__name__)
         ai_content = f"AI-generated guidance: consider the destination, timing, budget, and current local conditions for '{question.title}'. Verify this advice with recent traveler reports."
         
     answer = ForumAnswer(question_id=question.id, author_id=profile.id, is_ai_generated=True, content=ai_content)
@@ -194,17 +199,16 @@ def forum_summary(question_id: UUID, db: Session):
     
     try:
         system = "Return ONLY valid JSON matching exactly: {\"summary\":\"...\", \"recommendations\":[\"...\"], \"disagreements\":[\"...\"], \"warnings\":[\"...\"]}"
-        raw = generate_text(prompt, system=system).strip().removeprefix("```json").removesuffix("```").strip()
-        result_dict = json.loads(raw)
+        result_dict = parse_json_object(generate_text(prompt, system=system))
         result = CommunityConsensus(
             response_count=len(answers),
-            summary=result_dict.get("summary", "Community consensus analyzed."),
-            recommendations=result_dict.get("recommendations", []),
-            disagreements=result_dict.get("disagreements", []),
-            warnings=result_dict.get("warnings", ["This is an AI-generated summary, not a guarantee."])
+            summary=str(result_dict.get("summary") or "Community consensus analyzed."),
+            recommendations=string_list(result_dict.get("recommendations")),
+            disagreements=string_list(result_dict.get("disagreements")),
+            warnings=string_list(result_dict.get("warnings"), ["This is an AI-generated summary, not a guarantee."]),
         )
-    except Exception:
-        logger.warning("AI forum-summary generation failed, using fallback summary", exc_info=True)
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("AI forum-summary unavailable (%s), using fallback summary", type(exc).__name__)
         result = CommunityConsensus(response_count=len(answers), summary=f"{len(answers)} community responses mention checking current local conditions and grouping nearby activities.", recommendations=["Compare recent answers.", "Confirm prices and conditions locally."], disagreements=[], warnings=["This is an AI-generated summary, not a guarantee."])
         
     saved = db.scalar(select(AIForumSummary).where(AIForumSummary.question_id == question_id))

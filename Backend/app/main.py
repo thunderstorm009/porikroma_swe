@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,24 @@ from app.api.routes import admin, ai, auth, destinations, forum, misc, providers
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("porikroma.api")
+
+_TOKEN_IN_URL = re.compile(r"((?:access_)?token=)[^&\s\"']+")
+
+
+class RedactTokenFilter(logging.Filter):
+    """The chat WebSocket carries the Supabase access token in its URL, and uvicorn
+    logs full URLs. Mask it so tokens never end up in log files."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(_TOKEN_IN_URL.sub(r"\1[redacted]", a) if isinstance(a, str) else a for a in record.args)
+        if isinstance(record.msg, str):
+            record.msg = _TOKEN_IN_URL.sub(r"\1[redacted]", record.msg)
+        return True
+
+
+for _name in ("uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_name).addFilter(RedactTokenFilter())
 
 app = FastAPI(
     title="Porikroma API",

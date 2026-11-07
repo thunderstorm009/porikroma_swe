@@ -5,7 +5,7 @@ import {
   Shield, Check, Lock, Camera
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { apiClient } from '../services/apiClient';
 
 export default function ProfilePage({ onNavigate }) {

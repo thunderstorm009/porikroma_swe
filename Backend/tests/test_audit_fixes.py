@@ -204,3 +204,32 @@ def test_websocket_rejects_non_members_and_bad_tokens(client):
             with client.websocket_connect(f"/api/v1/ws/trips/{DEMO_TRIP}/chat?token={token}") as ws:
                 ws.receive_text()
         assert closed.value.code == 1008
+
+
+def test_ai_json_is_extracted_from_prose_and_fences():
+    from app.services.ai_service import parse_json_object, string_list
+    assert parse_json_object('Sure! Here it is:\n```json\n{"headline": "Hi", "insights": ["a"]}\n```\nEnjoy.') == {"headline": "Hi", "insights": ["a"]}
+    for bad in ("no json here", "[1, 2]", None):
+        with pytest.raises(ValueError):
+            parse_json_object(bad)
+    assert string_list("one") == ["one"]
+    assert string_list([None, " ", "x", 3]) == ["x", "3"]
+    assert string_list({"not": "a list"}, ["fallback"]) == ["fallback"]
+
+
+def test_budget_optimization_survives_odd_ai_output(client, monkeypatch):
+    import app.api.routes.ai as ai_routes
+    monkeypatch.setattr(ai_routes, "generate_text", lambda *a, **k: 'Tips: {"recommendations": "Take the bus"}')
+    as_user(OWNER)
+    response = client.post("/api/v1/ai/budget-optimization", json={"trip_id": str(DEMO_TRIP)})
+    assert response.status_code == 200
+    assert response.json()["data"]["recommendations"] == ["Take the bus"]
+
+
+def test_access_tokens_are_redacted_from_logs():
+    import logging
+    from app.main import RedactTokenFilter
+    record = logging.LogRecord("uvicorn.error", logging.INFO, __file__, 1, '%s - "WebSocket %s" [accepted]', ("127.0.0.1:1", "/api/v1/ws/trips/x/chat?token=eyJsecret.part&x=1"), None)
+    RedactTokenFilter().filter(record)
+    message = record.getMessage()
+    assert "eyJsecret" not in message and "token=[redacted]&x=1" in message

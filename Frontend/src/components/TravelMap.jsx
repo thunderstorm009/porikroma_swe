@@ -178,7 +178,9 @@ export default function TravelMap({ location, itinerary = [], selectable = false
               loading="lazy"
               allowFullScreen
               referrerPolicy="no-referrer-when-downgrade"
-              src={`https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${encodeURIComponent(currentSearchTarget)}`}
+              // Placeholder until the Maps JavaScript API loads. The keyless embed avoids
+              // depending on the separate "Maps Embed API" being enabled for the key.
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(currentSearchTarget)}&z=12&output=embed`}
             />
           )
         ) : (
