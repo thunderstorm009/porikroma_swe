@@ -1,20 +1,28 @@
-import { useEffect, useState, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
-import BrowseGroupsPage from './pages/BrowseGroupsPage';
-import PlanOptionsPage from './pages/PlanOptionsPage';
-import BookingPage from './pages/BookingPage';
-import ExpenseTrackerPage from './pages/ExpenseTrackerPage';
-import AdminInventoryPage from './pages/AdminInventoryPage';
-import AuthorTourPlanPage from './pages/AuthorTourPlanPage';
-import ProfilePage from './pages/ProfilePage';
-import EnhancedDashboardPage from './pages/EnhancedDashboardPage';
-import EnhancedCreateTripPage from './pages/EnhancedCreateTripPage';
-import TripWorkspacePage from './pages/TripWorkspacePage';
-import AIChatPage from './pages/AIChatPage';
-import CommunityPage from './pages/CommunityPage';
-import QuestionDetailPage from './pages/QuestionDetailPage';
+import { useAuth } from './contexts/AuthContext';
+
+// Route-level code splitting: the landing/auth pages load first, everything else on demand.
+const BrowseGroupsPage = lazy(() => import('./pages/BrowseGroupsPage'));
+const PlanOptionsPage = lazy(() => import('./pages/PlanOptionsPage'));
+const BookingPage = lazy(() => import('./pages/BookingPage'));
+const ExpenseTrackerPage = lazy(() => import('./pages/ExpenseTrackerPage'));
+const AdminInventoryPage = lazy(() => import('./pages/AdminInventoryPage'));
+const AuthorTourPlanPage = lazy(() => import('./pages/AuthorTourPlanPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const EnhancedDashboardPage = lazy(() => import('./pages/EnhancedDashboardPage'));
+const EnhancedCreateTripPage = lazy(() => import('./pages/EnhancedCreateTripPage'));
+const TripWorkspacePage = lazy(() => import('./pages/TripWorkspacePage'));
+const AIChatPage = lazy(() => import('./pages/AIChatPage'));
+const CommunityPage = lazy(() => import('./pages/CommunityPage'));
+const QuestionDetailPage = lazy(() => import('./pages/QuestionDetailPage'));
+
+const PageFallback = () => (
+  <div className="flex h-screen items-center justify-center text-teal-primary text-xl" role="status">Loading…</div>
+);
+
 import { BANGLADESH_TRIPS } from './mockData';
 import ProtectedRoute from './contexts/ProtectedRoute';
 import { tripService } from './services/tripService';
@@ -32,6 +40,7 @@ const toUiTrip = (trip) => {
     budgetPercent: trip.budgetPercent ?? 0,
     members: (trip.members || []).map((member) => ({
       id: member.id || member.user_id,
+      userId: member.user_id || member.userId || null,
       name: member.name || member.user?.full_name || member.user?.username || 'Traveler',
       initial: member.initial || (member.name || member.user?.full_name || member.user?.username || 'T')[0].toUpperCase(),
       role: member.role || 'Member',
@@ -49,6 +58,7 @@ function TripRouteWrapper({
   agentPlans = {},
   onSaveAgentPlan,
   onUpdateTrip,
+  onTripStateChange,
   theme,
   onToggleTheme
 }) {
@@ -124,6 +134,10 @@ function TripRouteWrapper({
         agentPlan={agentPlans[tripId]}
         onSaveAgentPlan={onSaveAgentPlan}
         onUpdateTrip={onUpdateTrip}
+        onTripStateChange={(updated) => {
+          if (!activeTrip) setLoadedTrip(updated);
+          if (onTripStateChange) onTripStateChange(updated);
+        }}
         theme={theme}
         onToggleTheme={onToggleTheme}
       />
@@ -157,32 +171,40 @@ export default function App() {
   const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const userId = user?.id || null;
   const [agentPlans, setAgentPlans] = useState({});
   const [forumPrefill, setForumPrefill] = useState(null);
-  const [theme, setTheme] = useState(() => localStorage.getItem('porikroma-theme') || 'light');
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('porikroma-theme') || 'light'; } catch { return 'light'; }
+  });
   const [trips, setTrips] = useState(useMock ? BANGLADESH_TRIPS.map(toUiTrip) : []);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
 
-  const refreshTrips = useCallback(() => {
+  // Trips belong to the signed-in user: load them when the user changes and drop
+  // them on sign-out so the next account never sees the previous one's trips.
+  useEffect(() => {
+    if (useMock) return undefined;
+    if (!userId) {
+      setTrips([]);
+      setIsLoadingTrips(false);
+      return undefined;
+    }
+    let active = true;
     setIsLoadingTrips(true);
     tripService.getTrips()
-      .then((data) => setTrips(Array.isArray(data) ? data.map(toUiTrip) : []))
+      .then((data) => { if (active) setTrips(Array.isArray(data) ? data.map(toUiTrip) : []); })
       .catch((err) => {
         console.error('Failed to load trips:', err);
-        if (!useMock) setTrips([]);
+        if (active) setTrips([]);
       })
-      .finally(() => {
-        setIsLoadingTrips(false);
-      });
-  }, [useMock]);
-
-  useEffect(() => {
-    refreshTrips();
-  }, [refreshTrips]);
+      .finally(() => { if (active) setIsLoadingTrips(false); });
+    return () => { active = false; };
+  }, [useMock, userId]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('porikroma-theme', theme);
+    try { localStorage.setItem('porikroma-theme', theme); } catch { /* storage unavailable */ }
   }, [theme]);
 
   const toggleTheme = () => setTheme((current) => current === 'dark' ? 'light' : 'dark');
@@ -239,16 +261,19 @@ export default function App() {
     }
   };
 
+  // Persists trip fields with PATCH /trips/{id}. Throws so callers can show the error.
   const handleUpdateTrip = async (updatedTrip) => {
-    try {
-      const savedTrip = await tripService.updateTrip(updatedTrip.id, updatedTrip);
-      const uiTrip = { ...updatedTrip, ...toUiTrip(savedTrip) };
-      setTrips((prev) => prev.map((t) => (String(t.id) === String(updatedTrip.id) ? uiTrip : t)));
-      return uiTrip;
-    } catch (err) {
-      console.error('Failed to update trip', err);
-    }
+    const savedTrip = await tripService.updateTrip(updatedTrip.id, updatedTrip);
+    const uiTrip = { ...updatedTrip, ...toUiTrip(savedTrip) };
+    setTrips((prev) => prev.map((t) => (String(t.id) === String(updatedTrip.id) ? uiTrip : t)));
+    return uiTrip;
   };
+
+  // Local-only update after a sub-resource (expense, member, ...) was already saved
+  // through its own endpoint. Must not re-PATCH the whole trip.
+  const handleTripStateChange = useCallback((updatedTrip) => {
+    setTrips((prev) => prev.map((t) => (String(t.id) === String(updatedTrip.id) ? { ...t, ...updatedTrip } : t)));
+  }, []);
 
   const tripRouteProps = {
     trips,
@@ -257,11 +282,13 @@ export default function App() {
     agentPlans,
     onSaveAgentPlan: handleSaveAgentPlan,
     onUpdateTrip: handleUpdateTrip,
+    onTripStateChange: handleTripStateChange,
     theme,
     onToggleTheme: toggleTheme
   };
 
   return (
+    <Suspense fallback={<PageFallback />}>
     <Routes>
       <Route path="/" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/login" element={<AuthPage onNavigate={(v, t) => handleNavigate(v, t)} onGoBack={handleGoBack} initialTab="login" theme={theme} onToggleTheme={toggleTheme} />} />
@@ -309,5 +336,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<LandingPage onNavigate={handleNavigate} onGoBack={null} theme={theme} onToggleTheme={toggleTheme} />} />
     </Routes>
+    </Suspense>
   );
 }

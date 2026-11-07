@@ -15,6 +15,8 @@ export default function AIChatPage({ onNavigate, theme, onToggleTheme, trip }) {
   const [messages, setMessages] = useState([{ id: 'welcome', user: 'Porikroma AI', initials: '✦', ai: true, color: 'teal', time: 'now', message: trip ? `I’m ready to help with your ${trip.destination} trip. Ask me about the plan, budget, weather, food, or what to do next.` : 'I’m your travel co-pilot for destinations, budgets, food, weather, hotels, and itineraries. What are you planning?' }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // Keep follow-up questions in the same server-side conversation.
+  const [conversationId, setConversationId] = useState(null);
 
   const send = async (event, suggested = '') => {
     event?.preventDefault();
@@ -24,8 +26,11 @@ export default function AIChatPage({ onNavigate, theme, onToggleTheme, trip }) {
     setMessages((current) => [...current, { id: Date.now(), user: currentUserName, initials: currentUserInitials, color: 'teal', time: 'now', message }]);
     setLoading(true);
     try {
-      const response = await aiService.chat(message, { trip, tripId: trip?.id, destination: trip?.destination, travelers: trip?.members?.length, budget: trip?.budget, itinerary: trip?.itinerary || [] });
+      const response = await aiService.chat(message, { trip, tripId: trip?.id, conversationId, destination: trip?.destination, travelers: trip?.members?.length, budget: trip?.budget, itinerary: trip?.itinerary || [] });
+      if (response.conversationId) setConversationId(response.conversationId);
       setMessages((current) => [...current, { ...response, id: Date.now() + 1, time: 'now' }]);
+    } catch (error) {
+      setMessages((current) => [...current, { id: Date.now() + 1, user: 'Porikroma AI', initials: '✦', ai: true, color: 'teal', time: 'now', message: `The assistant is unavailable right now (${error?.message || 'unknown error'}). Please try again shortly.` }]);
     } finally {
       setLoading(false);
     }

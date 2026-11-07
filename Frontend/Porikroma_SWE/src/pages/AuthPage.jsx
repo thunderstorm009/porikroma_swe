@@ -112,10 +112,15 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
     if (Object.keys(loginErrors).length === 0) {
       setLoginSubmitting(true);
       
-      const { error } = await supabase.auth.signInWithPassword({
-        email: loginFields.email,
-        password: loginFields.password
-      });
+      let error;
+      try {
+        ({ error } = await supabase.auth.signInWithPassword({
+          email: loginFields.email,
+          password: loginFields.password
+        }));
+      } catch (requestError) {
+        error = requestError instanceof Error ? requestError : new Error('Unable to reach the sign-in service. Please try again.');
+      }
 
       if (error) {
         setLoginSubmitting(false);
@@ -148,7 +153,10 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
     if (Object.keys(signupErrors).length === 0) {
       setSignupSubmitting(true);
 
-      const { data, error } = await supabase.auth.signUp({
+      let data;
+      let error;
+      try {
+        ({ data, error } = await supabase.auth.signUp({
         email: signupFields.email,
         password: signupFields.password,
         options: {
@@ -157,7 +165,10 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
             requested_role: signupFields.requested_role === 'Travel Planner' ? 'provider' : 'user'
           }
         }
-      });
+        }));
+      } catch (requestError) {
+        error = requestError instanceof Error ? requestError : new Error('Unable to reach the sign-up service. Please try again.');
+      }
 
       if (error) {
         setSignupSubmitting(false);

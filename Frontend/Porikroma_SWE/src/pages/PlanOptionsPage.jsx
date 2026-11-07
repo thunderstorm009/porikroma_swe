@@ -28,7 +28,7 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
       setLoadingTextIndex((prev) => (prev + 1) % loadingPhrases.length);
     }, 1800);
     return () => clearInterval(interval);
-  }, [isLoading]);
+  }, [isLoading, loadingPhrases.length]);
 
   // Simulate loading state on entry
   useEffect(() => {

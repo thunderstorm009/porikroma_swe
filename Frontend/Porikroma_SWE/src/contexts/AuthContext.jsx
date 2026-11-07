@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { apiClient } from '../services/apiClient';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -10,66 +10,68 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Which user the loaded profile/roles belong to. Token refreshes keep the same
+  // user, so they must not reload the profile or flash the loading screen.
+  const loadedUserId = useRef(null);
+  const requestSeq = useRef(0);
 
-  const fetchProfileAndRole = async () => {
+  const fetchProfileAndRole = useCallback(async () => {
+    const seq = ++requestSeq.current;
     try {
       const response = await apiClient.get('/api/v1/users/me');
       const data = response?.data;
-      if (data) {
-        setProfile(data.profile || data);
-        setRoles(data.roles || (data.role ? [data.role] : []));
-      }
+      if (seq !== requestSeq.current || !data) return;
+      setProfile(data.profile || data);
+      setRoles(data.roles || (data.role ? [data.role] : []));
     } catch (err) {
       console.warn('Profile fetch notice:', err);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let active = true;
 
-    const restoreSession = (sess) => {
+    const applySession = (sess) => {
       if (!active) return;
       setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) {
-        window.setTimeout(() => {
-          if (active) fetchProfileAndRole();
-        }, 0);
-      } else {
+      const nextUser = sess?.user ?? null;
+      setUser(nextUser);
+      if (!nextUser) {
+        loadedUserId.current = null;
+        requestSeq.current += 1; // discard any in-flight profile response
         setProfile(null);
         setRoles([]);
         setLoading(false);
+        return;
       }
+      if (loadedUserId.current === nextUser.id) return;
+      loadedUserId.current = nextUser.id;
+      // Hold protected routes until this user's roles are known, so role-gated
+      // pages don't redirect away right after sign-in.
+      setLoading(true);
+      // Deferred: Supabase warns against awaiting other calls inside its auth callback.
+      window.setTimeout(() => {
+        if (active) fetchProfileAndRole();
+      }, 0);
     };
 
-    supabase.auth.getSession().then(({ data: { session: sess } }) => restoreSession(sess)).catch(() => {
-      if (active) setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session: sess } }) => applySession(sess))
+      .catch(() => { if (active) setLoading(false); });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
-      if (!active) return;
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) {
-        window.setTimeout(() => {
-          if (active) fetchProfileAndRole();
-        }, 0);
-      } else {
-        setProfile(null);
-        setRoles([]);
-        setLoading(false);
-      }
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => applySession(sess));
 
     return () => {
       active = false;
       subscription?.unsubscribe?.();
     };
-  }, []);
+  }, [fetchProfileAndRole]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
+    loadedUserId.current = null;
+    requestSeq.current += 1;
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -77,19 +79,26 @@ export function AuthProvider({ children }) {
     try {
       await supabase.auth.signOut();
     } catch {
-      // ignore
+      // Local state is already cleared; a failed network sign-out only leaves a server session to expire.
     }
-  };
+  }, []);
 
-  const primaryRole = roles[0] || profile?.role || 'traveler';
+  const value = useMemo(() => ({
+    user,
+    session,
+    profile,
+    roles,
+    role: roles[0] || profile?.role || 'traveler',
+    loading,
+    logout,
+    refreshProfile: fetchProfileAndRole,
+  }), [user, session, profile, roles, loading, logout, fetchProfileAndRole]);
 
-  return (
-    <AuthContext.Provider value={{ user, session, profile, roles, role: primaryRole, loading, logout, refreshProfile: fetchProfileAndRole }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used inside <AuthProvider>');
+  return context;
 }

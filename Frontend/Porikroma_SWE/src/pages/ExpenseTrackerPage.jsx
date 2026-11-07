@@ -17,6 +17,9 @@ const CATEGORIES = {
   Transport: { name: 'Transport', icon: Car, color: 'bg-[#D98E3D]', hex: '#D98E3D' },
   Lodging: { name: 'Lodging', icon: Bed, color: 'bg-[#4B6584]', hex: '#4B6584' },
   Activities: { name: 'Activities', icon: ActivityIcon, color: 'bg-[#778CA3]', hex: '#778CA3' },
+  // Backend categories "shopping" and "emergency" map to these labels (expenseService.fromBackendCategory).
+  Shopping: { name: 'Shopping', icon: Tag, color: 'bg-[#8E6C8A]', hex: '#8E6C8A' },
+  Emergency: { name: 'Emergency', icon: AlertTriangle, color: 'bg-[#C95B43]', hex: '#C95B43' },
   Other: { name: 'Other', icon: Tag, color: 'bg-[#A5B1C2]', hex: '#A5B1C2' }
 };
 
@@ -112,7 +115,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
       setLoadingExpenses(false);
     }
     return () => { active = false; };
-  }, [selectedTripId, user?.id, useMock]); // Removed trips dependency to avoid full reload on any trip update
+  }, [selectedTripId, user?.id, useMock, tripsLoading, trips.length]); // trips.length (not trips): reload when trips first arrive, not on every trip edit
 
   // Reset form when tab or trip changes
   useEffect(() => {

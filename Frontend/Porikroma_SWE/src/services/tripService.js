@@ -3,6 +3,7 @@ import { BANGLADESH_TRIPS } from '../mockData';
 
 const wait = (value, ms = 280) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
 const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
+const JOIN_REQUEST_STATUSES = ['approved', 'rejected', 'cancelled'];
 
 const KNOWN_DESTINATIONS = {
   'cox\'s bazar': '10000000-0000-4000-8000-000000000001',
@@ -38,9 +39,13 @@ const parseDateString = (d) => {
   return null;
 };
 
+// "2026-10-01 — 2026-10-05", "2026-10-01 to 2026-10-05", ... ISO dates contain '-',
+// so pull the dates out with a regex instead of splitting on separators.
 const parseDatesRange = (datesStr) => {
   if (!datesStr || typeof datesStr !== 'string') return { start_date: null, end_date: null };
-  const parts = datesStr.split(/—|-|to/i).map((s) => s.trim());
+  const isoDates = datesStr.match(/\d{4}-\d{2}-\d{2}/g);
+  if (isoDates?.length) return { start_date: isoDates[0], end_date: isoDates[1] || isoDates[0] };
+  const parts = datesStr.split(/\s+(?:—|–|to)\s+|\s*[—–]\s*/i).map((part) => part.trim()).filter(Boolean);
   const start = parseDateString(parts[0]);
   const end = parseDateString(parts[1]) || start;
   return { start_date: start, end_date: end };
@@ -161,7 +166,13 @@ export const tripService = {
   createJoinRequest: (tripId, message = 'Request to join group') => useMock ? wait({ id: `req-${Date.now()}`, status: 'pending' }) : apiClient.post(`/api/v1/trips/${tripId}/join-requests`, { message: typeof message === 'string' ? message : message?.message || 'Request to join group' }).then((response) => response.data),
   updateJoinRequest: (tripId, requestId, status) => {
     const normalizedStatus = String(status).toLowerCase();
-    const validStatus = ['approved', 'rejected', 'cancelled'].includes(normalizedStatus) ? normalizedStatus : 'approved';
-    return useMock ? wait({ id: requestId, status: validStatus }) : apiClient.patch(`/api/v1/trips/${tripId}/join-requests/${requestId}`, { status: validStatus }).then((response) => response.data);
-  }
+    if (!JOIN_REQUEST_STATUSES.includes(normalizedStatus)) {
+      // Never guess: an unknown value must not turn into an approval.
+      return Promise.reject(new Error(`Unsupported join request status: ${status}`));
+    }
+    return useMock
+      ? wait({ id: requestId, status: normalizedStatus })
+      : apiClient.patch(`/api/v1/trips/${tripId}/join-requests/${requestId}`, { status: normalizedStatus }).then((response) => response.data);
+  },
+  leaveTrip: (tripId, userId) => useMock ? wait({ id: tripId, left: true }) : apiClient.delete(`/api/v1/trips/${tripId}/members/${userId}`)
 };

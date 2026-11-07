@@ -9,6 +9,8 @@ const timeAgo = (date) => { const days = Math.max(0, Math.round((Date.now() - ne
 
 function Person({ user, compact = false }) { return <div className="forum-person"><span className={`avatar avatar-${user?.color || 'teal'}`}>{user?.initials || '?'}</span><span><strong>{user?.name || 'Traveler'}</strong><small>{user?.role || 'Traveler'}{!compact && ` · ${user?.contributions || 0} contributions`}</small></span></div>; }
 
+const useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
+
 export default function QuestionDetailPage({ questionId, onNavigate, theme, onToggleTheme }) {
   const [bundle, setBundle] = useState(null);
   const [similar, setSimilar] = useState([]);
@@ -29,7 +31,8 @@ export default function QuestionDetailPage({ questionId, onNavigate, theme, onTo
     if (!bundle || bundle.question?.id !== questionId) {
       setLoading(true); 
     }
-    forumService.getQuestionBundle(questionId).then((loaded) => { 
+    const isRefresh = bundle?.question?.id === questionId;
+    forumService.getQuestionBundle(questionId, { countView: !isRefresh }).then((loaded) => { 
       if (!active) return; 
       setBundle(loaded); 
       setLoading(false);
@@ -84,7 +87,7 @@ export default function QuestionDetailPage({ questionId, onNavigate, theme, onTo
   };
   const likeAnswer = async (answerId) => { try { await forumService.likeAnswer(answerId); refresh(); } catch (error) { console.error('Failed to like answer', error); } };
   const likeReply = async (replyId) => { try { await forumService.likeReply(replyId); refresh(); } catch (error) { console.error('Failed to like reply', error); } };
-  const askAi = async () => { setAiLoading(true); setAiAnswer(null); try { const response = await aiService.answerForumQuestion({ questionId: question.id, title: question.title, content: question.content, destination: question.destination, category: question.category, answers: bundle.answers }); setAiAnswer(response); } catch { setAiAnswer({ title: 'Porikroma AI', answer: 'AI services are currently unavailable. Please try again later.', confidence: 'unavailable' }); } finally { setAiLoading(false); } };
+  const askAi = async () => { setAiLoading(true); setAiAnswer(null); try { const response = await aiService.answerForumQuestion({ questionId: question.id, title: question.title, content: question.content, destination: question.destination, category: question.category, answers: bundle.answers }); setAiAnswer(response); if (!useMockData) refresh(); } catch { setAiAnswer({ title: 'Porikroma AI', answer: 'AI services are currently unavailable. Please try again later.', confidence: 'unavailable' }); } finally { setAiLoading(false); } };
   const summarize = async () => { setAiLoading(true); try { const [summaryResponse, consensusResponse] = await Promise.all([aiService.summarizeDiscussion({ questionId: question.id, question, answers: bundle.answers }), aiService.getCommunityConsensus({ questionId: question.id, question, answers: bundle.answers })]); setSummary(summaryResponse); setConsensus(consensusResponse); } catch { setSummary({ response: 'AI services are currently unavailable. The discussion remains available below.', recommendations: [] }); setConsensus(null); } finally { setAiLoading(false); } };
   const author = bundle?.author;
 

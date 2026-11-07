@@ -31,8 +31,11 @@ export const weatherService = {
           longitude: location.longitude
         });
         const forecastList = response?.data?.forecast;
+        // "sample" = backend had no live forecast; label it rather than present it as real.
+        const isSample = response?.data?.source === 'sample';
         if (Array.isArray(forecastList) && forecastList.length > 0) {
           return forecastList.map((item, idx) => ({
+            isSample,
             day: item.dt_txt
               ? new Date(item.dt_txt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
               : `Day ${idx + 1}`,
@@ -46,6 +49,7 @@ export const weatherService = {
         console.warn('Weather service backend request failed, using fallback:', err);
       }
     }
-    return MOCK_WEATHER[location?.id] || MOCK_WEATHER.default;
+    const fallback = MOCK_WEATHER[location?.id] || MOCK_WEATHER.default;
+    return useMock ? fallback : fallback.map((item) => ({ ...item, isSample: true }));
   }
 };

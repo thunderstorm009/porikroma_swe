@@ -21,83 +21,56 @@ const MOCK_TOURS = [
   }
 ];
 
+// In production every method talks to the API and lets errors propagate; showing a
+// mock tour (or the wrong tour) as if it were bookable would mislead travelers.
 export const tourService = {
   getTours: async (params = {}) => {
-    if (!useMock) {
-      try {
-        const response = await apiClient.get('/api/v1/tours', params);
-        if (Array.isArray(response?.data)) return response.data;
-      } catch (err) {
-        console.warn('Tour service backend request failed, using fallback:', err);
-      }
-    }
-    return MOCK_TOURS;
+    if (useMock) return MOCK_TOURS;
+    const response = await apiClient.get('/api/v1/tours', params);
+    return Array.isArray(response?.data) ? response.data : [];
   },
 
   getTour: async (tourId) => {
-    if (!useMock && tourId) {
-      try {
-        const response = await apiClient.get(`/api/v1/tours/${tourId}`);
-        if (response?.data) return response.data;
-      } catch (err) {
-        console.warn('Get tour backend request failed, using fallback:', err);
-      }
-    }
-    return MOCK_TOURS.find((t) => t.id === tourId) || MOCK_TOURS[0];
+    if (useMock) return MOCK_TOURS.find((t) => t.id === tourId) || null;
+    const response = await apiClient.get(`/api/v1/tours/${tourId}`);
+    return response?.data || null;
   },
 
   getDepartures: async (tourId) => {
-    if (!useMock && tourId) {
-      try {
-        const response = await apiClient.get(`/api/v1/tours/${tourId}/departures`);
-        if (Array.isArray(response?.data)) return response.data;
-      } catch (err) {
-        console.warn('Get departures backend request failed:', err);
-      }
-    }
-    return [];
+    if (useMock) return [];
+    const response = await apiClient.get(`/api/v1/tours/${tourId}/departures`);
+    return Array.isArray(response?.data) ? response.data : [];
   },
 
   getCheckoutLink: async (tourId) => {
-    if (!useMock && tourId) {
-      try {
-        const response = await apiClient.get(`/api/v1/tours/${tourId}/checkout-link`);
-        if (response?.data) return response.data;
-      } catch (err) {
-        console.warn('Checkout link backend request failed:', err);
-      }
+    if (useMock) return null;
+    try {
+      const response = await apiClient.get(`/api/v1/tours/${tourId}/checkout-link`);
+      return response?.data || null;
+    } catch (err) {
+      if (err?.status === 404) return null; // tour has no external checkout link
+      throw err;
     }
-    return null;
   },
 
   createReservation: async (tourId, departureId, travelerCount = 1) => {
-    if (!useMock) {
-      const response = await apiClient.post(`/api/v1/tours/${tourId}/reservation-requests`, {
-        departure_id: departureId,
-        traveler_count: travelerCount
-      });
-      return response.data;
-    }
-    return { id: `res-${Date.now()}`, status: 'requested', traveler_count: travelerCount };
+    if (useMock) return { id: `res-${Date.now()}`, status: 'requested', traveler_count: travelerCount };
+    const response = await apiClient.post(`/api/v1/tours/${tourId}/reservation-requests`, {
+      departure_id: departureId,
+      traveler_count: travelerCount
+    });
+    return response.data;
   },
 
   getMyReservations: async () => {
-    if (!useMock) {
-      try {
-        const response = await apiClient.get('/api/v1/reservation-requests');
-        if (Array.isArray(response?.data)) return response.data;
-      } catch (err) {
-        console.warn('My reservations backend request failed:', err);
-      }
-    }
-    return [];
+    if (useMock) return [];
+    const response = await apiClient.get('/api/v1/reservation-requests');
+    return Array.isArray(response?.data) ? response.data : [];
   },
 
   cancelReservation: async (requestId) => {
-    if (!useMock) {
-      const response = await apiClient.delete(`/api/v1/reservation-requests/${requestId}`);
-      return response.data;
-    }
-    return { cancelled: true };
+    if (useMock) return { cancelled: true };
+    const response = await apiClient.delete(`/api/v1/reservation-requests/${requestId}`);
+    return response.data;
   }
 };

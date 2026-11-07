@@ -117,26 +117,19 @@ export const aiService = {
     return mock({ plans: MOCK_PLAN_OPTIONS, itinerary: MOCK_ITINERARY, input: data });
   },
 
+  // Backend returns {headline, budget, weather, intensity, insights}.
   generateTripSummary: async (trip) => {
-    if (!useMock && trip?.id) {
-      try {
-        const response = await apiClient.post('/api/v1/ai/trip-summary', { trip_id: trip.id });
-        if (response?.data) {
-          const d = response.data;
-          return {
-            headline: d.summary || MOCK_AI_SUMMARY.headline,
-            budget: d.budget_status === 'within budget' ? 'Balanced' : 'High ceiling',
-            weather: 'Favorable window',
-            intensity: 'Moderate',
-            activities: d.itinerary_items || 7,
-            insights: d.recommendations || MOCK_AI_SUMMARY.insights
-          };
-        }
-      } catch (err) {
-        console.warn('AI trip summary backend failed, using mock:', err);
-      }
-    }
-    return mock(MOCK_AI_SUMMARY);
+    if (useMock || !trip?.id) return mock(MOCK_AI_SUMMARY);
+    const response = await apiClient.post('/api/v1/ai/trip-summary', { trip_id: trip.id });
+    const d = response?.data || {};
+    return {
+      headline: d.headline || `${trip.title || 'Trip'} summary`,
+      budget: d.budget || '—',
+      weather: d.weather || 'Check local forecast',
+      intensity: d.intensity || 'Moderate',
+      activities: Array.isArray(trip.itinerary) ? trip.itinerary.length : undefined,
+      insights: Array.isArray(d.insights) ? d.insights : []
+    };
   },
 
   recommendDestinations: async (params = {}) => {
@@ -212,29 +205,25 @@ export const aiService = {
   },
   getTravelTips: () => mock(['Keep a light rain shell in your day bag.', 'Start beach activities before 9 AM for cooler light.', 'Share a live expense note with your group.']),
 
+  // In production a failure is thrown so the UI can say the assistant is unavailable,
+  // instead of passing a canned reply off as an AI answer.
   chat: async (message, context = {}) => {
-    if (!useMock) {
-      try {
-        const response = await apiClient.post('/api/v1/ai/chat', {
-          message,
-          trip_id: context.trip?.id || context.tripId || undefined,
-          conversation_id: context.conversationId || undefined
-        });
-        if (response?.data?.content) {
-          return {
-            user: 'Porikroma AI',
-            initials: '✦',
-            color: 'teal',
-            ai: true,
-            message: response.data.content,
-            conversationId: response.data.conversation_id
-          };
-        }
-      } catch (err) {
-        console.warn('AI chat backend failed, falling back to mock reply:', err);
-      }
+    if (useMock) {
+      return mock({ user: 'Porikroma AI', initials: '✦', color: 'teal', ai: true, message: travelReply(message, context) }, 500);
     }
-    return mock({ user: 'Porikroma AI', initials: '✦', color: 'teal', ai: true, message: travelReply(message, context) }, 500);
+    const response = await apiClient.post('/api/v1/ai/chat', {
+      message,
+      trip_id: context.trip?.id || context.tripId || undefined,
+      conversation_id: context.conversationId || undefined
+    });
+    return {
+      user: 'Porikroma AI',
+      initials: '✦',
+      color: 'teal',
+      ai: true,
+      message: response?.data?.content || '',
+      conversationId: response?.data?.conversation_id
+    };
   },
 
   answerForumQuestion: ({ questionId, title, destination, answers = [] }) => useMock ? mock({ title: 'Porikroma AI', answer: destination?.toLowerCase().includes('cox') ? `Yes. For ${title.toLowerCase().includes('budget') ? 'a budget-friendly plan, ' : ''}a 3-day trip around ${destination}, use budget accommodation, local transport, and keep roughly ৳1,500 as an emergency buffer. Community answers also suggest grouping activities by area so you spend more time exploring.` : `Based on the question about ${destination || 'this destination'}, I’d make the plan flexible around transport and weather. ${answers.length ? 'Travelers in this discussion consistently favor an early start and locally recommended stops.' : 'A recent local recommendation would make this more reliable, so consider asking the community too.'}`, confidence: answers.length ? 'high' : 'medium' }, 500) : apiClient.post('/api/v1/ai/forum-answer', { question_id: questionId }).then((response) => ({ title: 'Porikroma AI', answer: response.data?.content || response.data?.answer, confidence: 'medium' })),

@@ -17,10 +17,13 @@ export default function TravelMap({ location, itinerary = [], selectable = false
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
 
+  // Marker click handlers are created inside an effect; read the latest `choose` through a ref.
+  const chooseRef = useRef(null);
   const choose = (item) => {
     setSelected(item);
     if (selectable && onSelectLocation) onSelectLocation(item);
   };
+  chooseRef.current = choose;
 
   useEffect(() => {
     let ignore = false;
@@ -87,7 +90,7 @@ export default function TravelMap({ location, itinerary = [], selectable = false
         map: mapInstance.current,
         title: location.name || 'Center',
         icon: {
-          url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+          url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
         }
       });
       markersRef.current.push(centerMarker);
@@ -95,21 +98,23 @@ export default function TravelMap({ location, itinerary = [], selectable = false
 
     // Place result markers
     results.forEach((item) => {
-      const mLat = item.latitude || lat + (Math.random() - 0.5) * 0.04;
-      const mLng = item.longitude || lng + (Math.random() - 0.5) * 0.04;
+      // Never invent a position: a place without coordinates simply gets no marker.
+      const mLat = Number(item.latitude);
+      const mLng = Number(item.longitude);
+      if (!Number.isFinite(mLat) || !Number.isFinite(mLng)) return;
       const marker = new window.google.maps.Marker({
         position: { lat: mLat, lng: mLng },
         map: mapInstance.current,
         title: item.name,
         icon: {
           url: item.category === 'Hospital' || item.markerCategory === 'Hospital'
-            ? 'http://maps.google.com/mapfiles/ms/icons/pink-dot.png'
-            : 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+            ? 'https://maps.google.com/mapfiles/ms/icons/pink-dot.png'
+            : 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
         }
       });
 
       marker.addListener('click', () => {
-        choose(item);
+        chooseRef.current?.(item);
       });
 
       markersRef.current.push(marker);
@@ -126,7 +131,7 @@ export default function TravelMap({ location, itinerary = [], selectable = false
           map: mapInstance.current,
           title: item.location_name || item.title || `Stop ${i+1}`,
           icon: {
-            url: 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png'
+            url: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png'
           },
           label: {
             text: (i+1).toString(),
@@ -136,7 +141,7 @@ export default function TravelMap({ location, itinerary = [], selectable = false
         });
 
         marker.addListener('click', () => {
-          choose({ ...item, name: item.location_name || item.title, markerCategory: 'Itinerary' });
+          chooseRef.current?.({ ...item, name: item.location_name || item.title, markerCategory: 'Itinerary' });
         });
 
         markersRef.current.push(marker);

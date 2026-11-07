@@ -31,9 +31,10 @@ export const forumService = {
     if (sort === 'Trending') questions.sort((a, b) => (b.likes + b.views / 20) - (a.likes + a.views / 20));
     return pause(questions.map(withUserState));
   },
-  getQuestion: (id) => useMock ? pause(withUserState(FORUM_QUESTIONS.find((question) => question.id === id) || null)) : apiClient.get(`/api/v1/forum/questions/${id}`).then((response) => mapQuestion(response.data.question)),
-  getQuestionBundle: (id) => {
-    if (!useMock) return apiClient.get(`/api/v1/forum/questions/${id}`).then((response) => ({ question: mapQuestion(response.data.question), author: mapProfile(response.data.question.author), answers: (response.data.answers || []).map(mapAnswer) }));
+  getQuestion: (id) => useMock ? pause(withUserState(FORUM_QUESTIONS.find((question) => question.id === id) || null)) : apiClient.get(`/api/v1/forum/questions/${id}`, { count_view: false }).then((response) => mapQuestion(response.data.question)),
+  // countView=false for re-fetches after a like/answer, so interactions don't inflate views.
+  getQuestionBundle: (id, { countView = true } = {}) => {
+    if (!useMock) return apiClient.get(`/api/v1/forum/questions/${id}`, countView ? {} : { count_view: false }).then((response) => ({ question: mapQuestion(response.data.question), author: mapProfile(response.data.question.author), answers: (response.data.answers || []).map(mapAnswer) }));
     const question = FORUM_QUESTIONS.find((item) => item.id === id);
     if (!question) return pause(null);
     const answers = FORUM_ANSWERS.filter((answer) => answer.questionId === id).map((answer) => ({

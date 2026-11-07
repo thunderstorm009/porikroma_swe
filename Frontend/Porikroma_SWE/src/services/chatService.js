@@ -1,32 +1,40 @@
 import { MOCK_CHAT_MESSAGES } from '../data/travelData';
+import { apiClient, API_BASE_URL } from './apiClient';
 import { supabase } from './supabase';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
+
+const displayName = (sender) => sender?.full_name || sender?.username || 'Traveler';
+
+// Backend MessageRead -> the shape the chat UI renders. Used for REST history and
+// live WebSocket messages alike, so both look the same.
+export const toUiMessage = (data) => ({
+  id: data.id,
+  senderId: data.sender_id || data.sender?.id || null,
+  user: displayName(data.sender),
+  initials: displayName(data.sender).split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'T',
+  time: data.created_at ? new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'now',
+  message: data.content,
+  color: 'blue'
+});
 
 export const chatService = {
   getMessages: async (tripId) => {
-    try {
-      const { apiClient } = await import('./apiClient');
-      const res = await apiClient.get(`/api/v1/trips/${tripId}/messages`);
-      if (res?.data?.items) {
-        return res.data.items.map(data => ({
-          id: data.id,
-          user: data.sender?.full_name || data.sender?.username || 'User',
-          initials: (data.sender?.full_name || data.sender?.username || 'U')[0].toUpperCase(),
-          time: new Date(data.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          message: data.content,
-          color: 'blue'
-        }));
-      }
-      return MOCK_CHAT_MESSAGES;
-    } catch {
-      return MOCK_CHAT_MESSAGES;
-    }
+    if (useMock) return MOCK_CHAT_MESSAGES;
+    const res = await apiClient.get(`/api/v1/trips/${tripId}/messages`);
+    return (res?.data?.items || []).map(toUiMessage);
   },
-  // Returns a WebSocket-like handle ({ readyState, send, close }) that
-  // reconnects automatically with backoff if the connection drops, so a
-  // network blip or idle-timeout doesn't silently stop chat updates.
+
+  // REST fallback when the socket is not open. The backend also pushes the message
+  // to everyone connected over WebSocket.
+  postMessage: async (tripId, text) => {
+    const res = await apiClient.post(`/api/v1/trips/${tripId}/messages`, { content: text });
+    return toUiMessage(res.data);
+  },
+
+  // Returns a WebSocket-like handle ({ readyState, send, close }) that reconnects
+  // with backoff if the connection drops. `onMessage` receives UI-shaped messages.
   connect: async (tripId, onMessage, onStatusChange) => {
     let closed = false;
     let socket = null;
@@ -35,13 +43,23 @@ export const chatService = {
 
     const notifyStatus = (status) => { if (onStatusChange) onStatusChange(status); };
 
+    const scheduleReconnect = () => {
+      if (closed) return;
+      notifyStatus('reconnecting');
+      reconnectAttempts += 1;
+      const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 15000);
+      reconnectTimer = setTimeout(() => { openSocket().catch(scheduleReconnect); }, delay);
+    };
+
     const openSocket = async () => {
       if (closed) return;
       const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || '';
-      const wsUrl = `${WS_BASE_URL}/api/v1/ws/trips/${tripId}/chat?token=${token}`;
-
-      socket = new WebSocket(wsUrl);
+      const token = data?.session?.access_token;
+      if (!token) {
+        notifyStatus('closed');
+        return;
+      }
+      socket = new WebSocket(`${WS_BASE_URL}/api/v1/ws/trips/${tripId}/chat?token=${encodeURIComponent(token)}`);
       socket.onopen = () => {
         reconnectAttempts = 0;
         notifyStatus('connected');
@@ -49,7 +67,11 @@ export const chatService = {
       socket.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data);
-          onMessage(parsed);
+          if (parsed?.error) {
+            console.warn('Trip chat:', parsed.error);
+            return;
+          }
+          onMessage(toUiMessage(parsed));
         } catch (e) {
           console.error('Failed to parse WS message', e);
         }
@@ -62,23 +84,23 @@ export const chatService = {
           notifyStatus('closed');
           return;
         }
-        notifyStatus('reconnecting');
-        reconnectAttempts += 1;
-        const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 15000);
-        reconnectTimer = setTimeout(openSocket, delay);
+        scheduleReconnect();
       };
     };
 
-    await openSocket().catch(() => {});
+    notifyStatus('connecting');
+    await openSocket().catch(scheduleReconnect);
 
     return {
       get readyState() {
         return socket ? socket.readyState : WebSocket.CONNECTING;
       },
-      send(data) {
+      send(text) {
         if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(typeof data === 'string' ? data : JSON.stringify(data));
+          socket.send(JSON.stringify({ text }));
+          return true;
         }
+        return false;
       },
       close() {
         closed = true;
@@ -86,12 +108,5 @@ export const chatService = {
         if (socket) socket.close();
       }
     };
-  },
-  sendMessage: (socketOrHandle, messageText) => {
-    if (socketOrHandle?.send) {
-      socketOrHandle.send(typeof messageText === 'string' ? messageText : JSON.stringify(messageText));
-    } else if (socketOrHandle?.readyState === WebSocket.OPEN) {
-      socketOrHandle.send(JSON.stringify({ text: messageText }));
-    }
   }
 };
