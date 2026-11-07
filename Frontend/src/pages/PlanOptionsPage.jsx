@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  ArrowLeft, Compass, Calendar, Users, CreditCard, User, Check, Hotel, Car, Ticket, RefreshCw, X, ArrowRight, Menu, Bot, MessageCircle
+  ArrowLeft, Check, Hotel, Car, Ticket, RefreshCw, ArrowRight
 } from 'lucide-react';
-import LogoIcon from '../components/LogoIcon';
-import SidebarAccount from '../components/SidebarAccount';
+import TravelShell from '../components/TravelShell';
 
-export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) {
+export default function PlanOptionsPage({ theme, onToggleTheme, onNavigate, trip, agentPlan = null }) {
   const shouldReduceMotion = useReducedMotion();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingTextIndex, setLoadingTextIndex] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState(null);
@@ -118,90 +116,17 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
   ] : basePlans;
 
   // Sidebar Menu Items
-  // Same links and order as TravelShell, so navigation looks the same on every page.
-  const menuItems = [
-    { name: 'Dashboard', icon: <Compass size={18} />, active: false, action: () => onNavigate('dashboard') },
-    { name: 'My Trips', icon: <Calendar size={18} />, active: true, action: () => onNavigate('my-trips') },
-    { name: 'AI Assistant', icon: <Bot size={18} />, active: false, action: () => onNavigate('ai-chat') },
-    { name: 'Community', icon: <MessageCircle size={18} />, active: false, action: () => onNavigate('community') },
-    { name: 'Browse Groups', icon: <Users size={18} />, active: false, action: () => onNavigate('browse-groups') },
-    { name: 'Expenses', icon: <CreditCard size={18} />, active: false, action: () => onNavigate('expenses') },
-    { name: 'Profile', icon: <User size={18} />, active: false, action: () => onNavigate('profile') }
-  ];
 
   // Path for loop drawing SVG route
   const pathD = "M 20,40 C 80,10 120,70 180,40 C 240,10 280,70 340,40";
 
   return (
-    <div className="min-h-screen bg-[#F5F6F4]/40 text-navy font-sans flex flex-col lg:flex-row relative">
+    <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="My Trips" title="Plan options">
       
-      {/* Mobile Top Header */}
-      <div className="lg:hidden w-full h-16 bg-white border-b border-border-custom px-6 flex items-center justify-between sticky top-0 z-40">
-        <a href="#" className="flex items-center gap-2.5 font-serif text-xl font-semibold tracking-tight text-navy">
-          <LogoIcon />
-          <span>Porikroma</span>
-        </a>
-        <button 
-          onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-          className="p-2 text-navy/80 hover:text-teal-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary rounded"
-          aria-label="Toggle navigation drawer"
-        >
-          <Menu size={20} />
-        </button>
-      </div>
-
-      {/* Persistent Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 w-64 bg-white border-r border-border-custom py-8 flex flex-col justify-between z-30 transition-transform duration-300 lg:translate-x-0
-        ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        <div className="space-y-8 px-6">
-          <div className="flex items-center justify-between">
-            <a href="#" className="flex items-center gap-2.5 font-serif text-2xl font-semibold tracking-tight text-navy focus-visible:outline-2 focus-visible:outline-teal-primary rounded">
-              <LogoIcon />
-              <span>Porikroma</span>
-            </a>
-            {mobileSidebarOpen && (
-              <button 
-                onClick={() => setMobileSidebarOpen(false)}
-                className="lg:hidden p-1.5 text-navy/50 hover:text-navy rounded-full hover:bg-fog focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-                aria-label="Close sidebar"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
-
-          <nav className="space-y-1.5">
-            {menuItems.map((item) => (
-              <a
-                key={item.name}
-                href={`#${item.name.toLowerCase().replace(' ', '-')}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  item.action();
-                  if (mobileSidebarOpen) setMobileSidebarOpen(false);
-                }}
-                className={`
-                  flex items-center gap-3 px-3 py-2 text-sm font-semibold rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary
-                  ${item.active 
-                    ? 'bg-teal-primary/10 text-teal-primary' 
-                    : 'text-navy/70 hover:text-teal-primary hover:bg-fog'}
-                `}
-              >
-                {item.icon}
-                {item.name}
-              </a>
-            ))}
-          </nav>
-        </div>
-
-        <SidebarAccount onNavigate={onNavigate} />
-      </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow lg:pl-64 min-h-screen flex flex-col justify-between">
-        <div className="max-w-5xl mx-auto w-full px-6 py-8 md:py-12 flex-grow flex flex-col space-y-8">
+      <div className="text-navy font-sans text-left">
+        <div className="max-w-5xl mx-auto w-full flex-grow flex flex-col space-y-8">
           
           {/* Back Action button */}
           <button
@@ -407,7 +332,7 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
           </AnimatePresence>
 
         </div>
-      </main>
+      </div>
 
       {/* STICKY BOTTOM BAR (slides up when a plan is selected) */}
       <AnimatePresence>
@@ -417,7 +342,7 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="fixed bottom-0 left-0 lg:left-64 right-0 bg-white border-t border-border-custom px-6 py-4 flex items-center justify-between gap-4 z-40 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]"
+            className="fixed bottom-0 left-0 min-[761px]:left-[248px] right-0 bg-white border-t border-border-custom px-6 py-4 flex items-center justify-between gap-4 z-40 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]"
           >
             <div className="text-left">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-navy/40 block">Selected Option Cost</span>
@@ -437,6 +362,6 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
         )}
       </AnimatePresence>
 
-    </div>
+    </TravelShell>
   );
 }

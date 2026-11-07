@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Users, Calendar, Compass, CreditCard, User, Search, X, Check, Loader2, ArrowRight, Menu, Bot, MessageCircle
+  Search, X, Check, Loader2, ArrowRight
 } from 'lucide-react';
-import LogoIcon from '../components/LogoIcon';
-import SidebarAccount from '../components/SidebarAccount';
+import TravelShell from '../components/TravelShell';
 import { useAuth } from '../contexts/useAuth';
 import { tripService } from '../services/tripService';
 
@@ -15,10 +14,9 @@ const SEASON_MONTHS = {
   winter: [12, 1, 2],
 };
 
-export default function BrowseGroupsPage({ onNavigate }) {
+export default function BrowseGroupsPage({ theme, onToggleTheme, onNavigate }) {
   const { user } = useAuth();
   const shouldReduceMotion = useReducedMotion();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Form Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,16 +78,6 @@ export default function BrowseGroupsPage({ onNavigate }) {
   }, [reloadToken, user?.id]);
 
   // Sidebar Menu Items
-  // Same links and order as TravelShell, so navigation looks the same on every page.
-  const menuItems = [
-    { name: 'Dashboard', icon: <Compass size={18} />, active: false, action: () => onNavigate('dashboard') },
-    { name: 'My Trips', icon: <Calendar size={18} />, active: false, action: () => onNavigate('my-trips') },
-    { name: 'AI Assistant', icon: <Bot size={18} />, active: false, action: () => onNavigate('ai-chat') },
-    { name: 'Community', icon: <MessageCircle size={18} />, active: false, action: () => onNavigate('community') },
-    { name: 'Browse Groups', icon: <Users size={18} />, active: true, action: () => onNavigate('browse-groups') },
-    { name: 'Expenses', icon: <CreditCard size={18} />, active: false, action: () => onNavigate('expenses') },
-    { name: 'Profile', icon: <User size={18} />, active: false, action: () => onNavigate('profile') }
-  ];
 
   // Filtering Logic
   const filteredTrips = trips.filter(trip => {
@@ -150,75 +138,12 @@ export default function BrowseGroupsPage({ onNavigate }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F6F4]/40 text-navy font-sans flex flex-col lg:flex-row relative">
+    <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="Browse Groups" title="Browse group trips">
       
-      {/* Mobile Top Header */}
-      <div className="lg:hidden w-full h-16 bg-white border-b border-border-custom px-6 flex items-center justify-between sticky top-0 z-40">
-        <a href="#" className="flex items-center gap-2.5 font-serif text-xl font-semibold tracking-tight text-navy">
-          <LogoIcon />
-          <span>Porikroma</span>
-        </a>
-        <button 
-          onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-          className="p-2 text-navy/80 hover:text-teal-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary rounded"
-          aria-label="Toggle navigation drawer"
-        >
-          <Menu size={20} />
-        </button>
-      </div>
-
-      {/* Persistent Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 w-64 bg-white border-r border-border-custom py-8 flex flex-col justify-between z-30 transition-transform duration-300 lg:translate-x-0
-        ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        <div className="space-y-8 px-6">
-          <div className="flex items-center justify-between">
-            <a href="#" className="flex items-center gap-2.5 font-serif text-2xl font-semibold tracking-tight text-navy focus-visible:outline-2 focus-visible:outline-teal-primary rounded">
-              <LogoIcon />
-              <span>Porikroma</span>
-            </a>
-            {mobileSidebarOpen && (
-              <button 
-                onClick={() => setMobileSidebarOpen(false)}
-                className="lg:hidden p-1.5 text-navy/50 hover:text-navy rounded-full hover:bg-fog focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-                aria-label="Close sidebar"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
-
-          <nav className="space-y-1.5">
-            {menuItems.map((item) => (
-              <a
-                key={item.name}
-                href={`#${item.name.toLowerCase().replace(' ', '-')}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  item.action();
-                  if (mobileSidebarOpen) setMobileSidebarOpen(false);
-                }}
-                className={`
-                  flex items-center gap-3 px-3 py-2 text-sm font-semibold rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary
-                  ${item.active 
-                    ? 'bg-teal-primary/10 text-teal-primary' 
-                    : 'text-navy/70 hover:text-teal-primary hover:bg-fog'}
-                `}
-              >
-                {item.icon}
-                {item.name}
-              </a>
-            ))}
-          </nav>
-        </div>
-
-        <SidebarAccount onNavigate={onNavigate} />
-      </aside>
 
       {/* Main Content */}
-      <main className="flex-grow lg:pl-64 min-h-screen flex flex-col">
-        <div className="max-w-6xl mx-auto w-full px-6 py-8 md:py-12 flex-grow flex flex-col space-y-8">
+      <div className="text-navy font-sans text-left">
+        <div className="max-w-6xl mx-auto w-full flex-grow flex flex-col space-y-8">
           
           {/* Page Header */}
           <div className="text-left space-y-1">
@@ -441,7 +366,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
           </div>
 
         </div>
-      </main>
+      </div>
 
       {/* REQUEST TO JOIN MODAL OVERLAY */}
       <AnimatePresence>
@@ -566,6 +491,6 @@ export default function BrowseGroupsPage({ onNavigate }) {
         )}
       </AnimatePresence>
 
-    </div>
+    </TravelShell>
   );
 }

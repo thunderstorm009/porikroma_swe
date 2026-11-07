@@ -300,7 +300,7 @@ export default function App() {
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<EnhancedDashboardPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} theme={theme} onToggleTheme={toggleTheme} />} />
-        <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} onGoBack={handleGoBack} />} />
+        <Route path="/profile" element={<ProfilePage onNavigate={handleNavigate} onGoBack={handleGoBack} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/trips" element={<EnhancedDashboardPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/trips/new" element={<EnhancedCreateTripPage onNavigate={handleNavigate} onGoBack={handleGoBack} onCreateTrip={handleCreateTrip} theme={theme} onToggleTheme={toggleTheme} />} />
         
@@ -315,12 +315,12 @@ export default function App() {
         {/* Nested Trip Sub-Routes */}
         <Route path="/trips/:tripId/options" element={<TripRouteWrapper Component={PlanOptionsPage} tripOnly={true} {...tripRouteProps} />} />
         <Route path="/trips/:tripId/booking" element={<TripRouteWrapper Component={BookingPage} tripOnly={true} {...tripRouteProps} />} />
-        <Route path="/trips/:tripId/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} />} />
+        <Route path="/trips/:tripId/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/trips/:tripId/chat" element={<TripRouteWrapper Component={AIChatPage} tripOnly={true} {...tripRouteProps} />} />
         
         {/* Global Features */}
-        <Route path="/groups" element={<BrowseGroupsPage onNavigate={handleNavigate} onGoBack={handleGoBack} />} />
-        <Route path="/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} />} />
+        <Route path="/groups" element={<BrowseGroupsPage onNavigate={handleNavigate} onGoBack={handleGoBack} theme={theme} onToggleTheme={toggleTheme} />} />
+        <Route path="/expenses" element={<ExpenseTrackerPage onNavigate={handleNavigate} onGoBack={handleGoBack} trips={trips} tripsLoading={isLoadingTrips} theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/ai" element={<AIChatPage onNavigate={handleNavigate} onGoBack={handleGoBack} theme={theme} onToggleTheme={toggleTheme} />} />
         
         {/* Community Forum */}
