@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import require_approved_provider
 from app.core.security import get_current_profile
 from app.db.database import get_db
-from app.models import ProviderDocument, ProviderProfile, Profile, Tour, TourDeparture, TourReservationRequest
+from app.models import Destination, ProviderDocument, ProviderProfile, Profile, Tour, TourDeparture, TourReservationRequest
 from app.schemas import (
     DepartureCreate,
     DepartureRead,
@@ -25,6 +25,7 @@ from app.schemas import (
     TourUpdate,
 )
 from app.services.audit_service import record_audit
+from app.services.authorization import ensure_exists
 
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
@@ -109,6 +110,7 @@ def list_my_tours(profile: Profile = Depends(require_approved_provider), db: Ses
 @router.post("/me/tours", status_code=status.HTTP_201_CREATED, summary="Create a draft tour")
 def create_tour(payload: TourCreate, profile: Profile = Depends(require_approved_provider), db: Session = Depends(get_db)):
     provider = provider_for(db, profile.id)
+    ensure_exists(db, Destination, payload.destination_id, "Destination")
     tour = Tour(provider_id=provider.id, **payload.model_dump())
     db.add(tour)
     record_audit(db, actor_id=profile.id, action="tour_created", resource_type="tour")
@@ -125,7 +127,10 @@ def update_tour(tour_id: UUID, payload: TourUpdate, profile: Profile = Depends(r
         raise HTTPException(status_code=404, detail="Tour not found")
     if tour.status in {"archived", "pending_review"}:
         raise HTTPException(status_code=409, detail="This tour cannot be edited in its current state")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    if "destination_id" in values:
+        ensure_exists(db, Destination, values["destination_id"], "Destination")
+    for key, value in values.items():
         setattr(tour, key, value)
     db.commit()
     db.refresh(tour)
@@ -187,13 +192,18 @@ def update_reservation(request_id: UUID, payload: ReservationUpdate, profile: Pr
         raise HTTPException(status_code=400, detail="Travelers cancel their own reservation requests")
     if request.status not in {"requested", "approved"}:
         raise HTTPException(status_code=409, detail="Reservation request is already closed")
-    if payload.status == "approved" and request.status == "requested":
+    if payload.status == "approved":
+        if request.status != "requested":
+            raise HTTPException(status_code=409, detail="Only pending requests can be approved")
         request.status = "approved"
-    elif payload.status == "rejected" and request.status in {"requested", "approved"}:
-        if request.status == "approved" or request.status == "requested":
-            request.departure.remaining_capacity += request.traveler_count
+    elif payload.status == "rejected":
+        # Seats were held when the request was made; give them back.
+        departure = db.scalar(select(TourDeparture).where(TourDeparture.id == request.departure_id).with_for_update())
+        departure.remaining_capacity += request.traveler_count
         request.status = "rejected"
     elif payload.status == "completed":
+        if request.status != "approved":
+            raise HTTPException(status_code=409, detail="Only approved requests can be completed")
         request.status = "completed"
     if payload.external_reference is not None:
         request.external_reference = payload.external_reference

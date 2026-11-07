@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import math
 from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import AuthenticatedUser, get_current_user
+from app.core.security import AuthenticatedUser, get_current_user, get_active_user
 from app.db.database import get_db
 from app.models import EmergencyLocation, Notification
 from app.schemas import NotificationRead
@@ -21,11 +22,18 @@ notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"]
 
 @emergency_router.get("/nearby", summary="Find nearby emergency locations")
 def nearby_emergency(latitude: float = Query(..., ge=-90, le=90), longitude: float = Query(..., ge=-180, le=180), category: str | None = Query(None), radius: float = Query(25, gt=0, le=200), db: Session = Depends(get_db)):
-    rows = db.scalars(select(EmergencyLocation)).all()
+    # Cheap bounding-box prefilter in SQL; the exact great-circle check follows in Python.
+    lat_delta = radius / 111.0
+    lon_delta = radius / max(1.0, 111.0 * math.cos(math.radians(latitude)))
+    stmt = select(EmergencyLocation).where(
+        EmergencyLocation.latitude.between(latitude - lat_delta, latitude + lat_delta),
+        EmergencyLocation.longitude.between(longitude - lon_delta, longitude + lon_delta),
+    )
+    wanted = category.strip().lower().replace(" ", "_") if category else None
+    if wanted:
+        stmt = stmt.where(EmergencyLocation.category == wanted)
     selected = []
-    for row in rows:
-        if category and category.lower() not in {row.category.lower(), row.category.replace("_", " ").lower()}:
-            continue
+    for row in db.scalars(stmt).all():
         distance = distance_km(latitude, longitude, float(row.latitude), float(row.longitude))
         if distance <= radius:
             selected.append({"id": row.id, "name": row.name, "category": row.category, "address": row.address, "latitude": row.latitude, "longitude": row.longitude, "phone": row.phone, "is_open": row.is_open, "distance_km": round(distance, 2), "informational": True})
@@ -42,14 +50,15 @@ def weather(latitude: float = Query(..., ge=-90, le=90), longitude: float = Quer
 
 
 @notifications_router.get("", summary="List authenticated notifications")
-def list_notifications(page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_notifications(page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     query = select(Notification).where(Notification.user_id == current_user.id).order_by(Notification.created_at.desc())
     rows = db.scalars(query.offset((page - 1) * limit).limit(limit)).all()
-    return {"data": {"items": [NotificationRead.model_validate(row) for row in rows], "page": page, "limit": limit}}
+    total = db.scalar(select(func.count(Notification.id)).where(Notification.user_id == current_user.id)) or 0
+    return {"data": {"items": [NotificationRead.model_validate(row) for row in rows], "page": page, "limit": limit, "total": total}}
 
 
 @notifications_router.post("/{notification_id}/read", summary="Mark a notification read")
-def mark_notification_read(notification_id: UUID, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def mark_notification_read(notification_id: UUID, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     row = db.scalar(select(Notification).where(Notification.id == notification_id, Notification.user_id == current_user.id))
     if not row:
         raise HTTPException(status_code=404, detail="Notification not found")

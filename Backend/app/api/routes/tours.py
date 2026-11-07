@@ -106,7 +106,8 @@ def cancel_my_reservation(request_id: UUID, profile: Profile = Depends(get_curre
     if row.status not in {"requested", "approved"}:
         raise HTTPException(status_code=409, detail="Reservation request is already closed")
     row.status = "cancelled"
-    row.departure.remaining_capacity += row.traveler_count
+    departure = db.scalar(select(TourDeparture).where(TourDeparture.id == row.departure_id).with_for_update())
+    departure.remaining_capacity += row.traveler_count
     record_audit(db, actor_id=profile.id, action="reservation_request_cancelled", resource_type="reservation_request", resource_id=row.id)
     db.commit()
     return {"data": {"cancelled": True}}

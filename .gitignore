@@ -32,3 +32,6 @@
 *.db
 coverage/
 
+
+# Local AI project tracking and execution documentation
+.project-tracker/

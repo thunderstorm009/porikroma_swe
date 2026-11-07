@@ -9,9 +9,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import AuthenticatedUser, get_current_profile, get_current_user
+from app.core.security import AuthenticatedUser, get_current_profile, get_current_user, get_active_user
 from app.db.database import get_db
-from app.models import AIConversation, AIForumSummary, AIMessage, AITripSummary, Destination, Expense, ForumAnswer, ForumQuestion, Hotel, Restaurant, Attraction, Profile
+from app.models import ItineraryItem, AIConversation, AIForumSummary, AIMessage, AITripSummary, Destination, Expense, ForumAnswer, ForumQuestion, Hotel, Restaurant, Attraction, Profile
 from app.schemas import (
     AIChatRequest,
     AIChatResponse,
@@ -28,7 +28,7 @@ from app.schemas import (
     TripPlanResponse,
 )
 from app.services.ai_service import chat, generate_text, trip_plan
-from app.services.authorization import require_trip_access
+from app.services.authorization import require_trip_access, require_trip_member
 from app.services.rate_limit import check_ai_rate_limit
 
 router = APIRouter(prefix="/ai", tags=["AI"], dependencies=[Depends(check_ai_rate_limit)])
@@ -62,7 +62,7 @@ def ai_chat(payload: AIChatRequest, profile: Profile = Depends(get_current_profi
 
 
 @router.post("/trip-plan", response_model=dict, summary="Generate a validated trip plan")
-def generate_trip_plan(payload: TripPlanRequest, current_user: AuthenticatedUser = Depends(get_current_user)):
+def generate_trip_plan(payload: TripPlanRequest, current_user: AuthenticatedUser = Depends(get_active_user)):
     try:
         result = trip_plan(payload.destination, payload.start_date, payload.end_date, payload.budget, payload.interests, payload.travel_style)
         return {"data": TripPlanResponse.model_validate(result)}
@@ -71,7 +71,7 @@ def generate_trip_plan(payload: TripPlanRequest, current_user: AuthenticatedUser
 
 
 @router.post("/destination-recommendations", summary="Recommend destinations")
-def recommend_destinations(payload: RecommendationRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def recommend_destinations(payload: RecommendationRequest, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     rows = db.scalars(select(Destination).order_by(Destination.estimated_budget)).all()
     results = []
     for item in rows:
@@ -83,8 +83,8 @@ def recommend_destinations(payload: RecommendationRequest, current_user: Authent
 
 
 @router.post("/budget-optimization", summary="Analyze a trip budget")
-def optimize_budget(payload: BudgetOptimizationRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    trip, _ = require_trip_access(db, payload.trip_id, current_user.id)
+def optimize_budget(payload: BudgetOptimizationRequest, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
+    trip, _ = require_trip_member(db, payload.trip_id, current_user.id)
     spent = Decimal(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.trip_id == trip.id)) or 0)
     remaining = Decimal(trip.budget or 0) - spent
     potential = max(Decimal("0"), remaining * Decimal("0.10"))
@@ -104,11 +104,12 @@ def optimize_budget(payload: BudgetOptimizationRequest, current_user: Authentica
 
 
 @router.post("/trip-summary", summary="Summarize an authorized trip")
-def trip_summary(payload: BudgetOptimizationRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    trip, _ = require_trip_access(db, payload.trip_id, current_user.id)
+def trip_summary(payload: BudgetOptimizationRequest, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
+    trip, _ = require_trip_member(db, payload.trip_id, current_user.id)
     spent = Decimal(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.trip_id == trip.id)) or 0)
-    
-    prompt = f"Summarize this trip: {trip.title}, {trip.travel_type} style, budget: {trip.budget}, spent: {spent}. Itinerary has {len(trip.itinerary_items)} items. Please provide a headline, budget string, weather string, intensity string, and a list of 3 short insight strings."
+    item_count = db.scalar(select(func.count(ItineraryItem.id)).where(ItineraryItem.trip_id == trip.id)) or 0
+
+    prompt = f"Summarize this trip: {trip.title}, {trip.travel_type} style, budget: {trip.budget}, spent: {spent}. Itinerary has {item_count} items. Please provide a headline, budget string, weather string, intensity string, and a list of 3 short insight strings."
     
     try:
         system = "Return ONLY valid JSON matching exactly: {\"headline\":\"...\", \"budget\":\"...\", \"weather\":\"...\", \"intensity\":\"...\", \"insights\":[\"...\"]}"
@@ -140,7 +141,7 @@ def trip_summary(payload: BudgetOptimizationRequest, current_user: Authenticated
 
 
 @router.post("/hotel-recommendations", summary="Recommend hotels from stored data")
-def hotel_recommendations(destination_id: UUID, budget: Decimal = 0, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def hotel_recommendations(destination_id: UUID, budget: Decimal = 0, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     # `budget` is accepted for forward compatibility but not used to filter: price_range is
     # free-text (e.g. "$$", "2000-4000 BDT") and can't be reliably compared against a number.
     rows = db.scalars(select(Hotel).where(Hotel.destination_id == destination_id).order_by(Hotel.rating.desc().nullslast())).all()
@@ -148,7 +149,7 @@ def hotel_recommendations(destination_id: UUID, budget: Decimal = 0, current_use
 
 
 @router.post("/place-recommendations", summary="Recommend stored restaurants or attractions")
-def place_recommendations(destination_id: UUID, place_type: str = "restaurants", current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def place_recommendations(destination_id: UUID, place_type: str = "restaurants", current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     model = Restaurant if place_type == "restaurants" else Attraction if place_type == "attractions" else None
     if not model:
         raise HTTPException(status_code=422, detail="place_type must be restaurants or attractions")
@@ -175,8 +176,9 @@ def ai_forum_answer(payload: ForumAIRequest, profile: Profile = Depends(get_curr
     answer = ForumAnswer(question_id=question.id, author_id=profile.id, is_ai_generated=True, content=ai_content)
     db.add(answer)
     db.commit()
-    db.refresh(answer)
-    return {"data": AnswerRead.model_validate(answer)}
+    from app.api.routes.forum import answer_reads, load_answer
+
+    return {"data": answer_reads(db, [load_answer(db, answer.id)], profile.id)[0]}
 
 
 def forum_summary(question_id: UUID, db: Session):
@@ -215,10 +217,10 @@ def forum_summary(question_id: UUID, db: Session):
 
 
 @router.post("/forum-summary", summary="Summarize a forum discussion")
-def ai_forum_summary(payload: ForumAIRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def ai_forum_summary(payload: ForumAIRequest, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     return {"data": forum_summary(payload.question_id, db)}
 
 
 @router.post("/community-consensus", summary="Calculate an AI community consensus")
-def community_consensus(payload: ForumAIRequest, current_user: AuthenticatedUser = Depends(get_current_user), db: Session = Depends(get_db)):
+def community_consensus(payload: ForumAIRequest, current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     return {"data": forum_summary(payload.question_id, db)}

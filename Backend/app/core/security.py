@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -82,65 +83,77 @@ def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends
         return None
 
 
+_PROVIDER_SIGNUP_VALUES = {"Travel Planner", "provider"}
+_ROLE_DESCRIPTIONS = {
+    "provider": "Create and manage travel plans for others.",
+    "traveler": "Create and manage personal travel plans and community activity.",
+}
+
+
+def _initial_role_name(claims: dict) -> str:
+    """Role for a brand-new profile, from the sign-up form's ``requested_role``.
+
+    ``user_metadata`` is editable by the user at any time, so it is only consulted
+    once, when the profile is first created. Later changes are ignored and role
+    changes go through the admin endpoints.
+    """
+    requested = (claims.get("user_metadata") or {}).get("requested_role")
+    return "provider" if requested in _PROVIDER_SIGNUP_VALUES else "traveler"
+
+
+def _available_username(db: Session, base: str, user_id: UUID) -> str:
+    base = (base or "").strip()[:80] or f"traveler-{str(user_id)[:8]}"
+    if db.scalar(select(Profile.id).where(Profile.username == base)) is None:
+        return base
+    # Two e-mail addresses can share a local part (jo@a.com / jo@b.com); keep usernames unique.
+    return f"{base[:71]}-{str(user_id)[:8]}"
+
+
+def _create_profile(db: Session, current_user: AuthenticatedUser) -> Profile:
+    claims = current_user.claims
+    user_metadata = claims.get("user_metadata") or {}
+    email = str(claims.get("email", ""))
+    profile = Profile(
+        id=current_user.id,
+        username=_available_username(db, email.split("@", 1)[0], current_user.id),
+        full_name=user_metadata.get("full_name") or claims.get("name"),
+    )
+    db.add(profile)
+    db.flush()
+
+    role_name = _initial_role_name(claims)
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if role is None:
+        role = Role(name=role_name, description=_ROLE_DESCRIPTIONS[role_name])
+        db.add(role)
+        db.flush()
+    db.add(UserRole(user_id=profile.id, role_id=role.id))
+    db.commit()
+    return profile
+
+
 def get_current_profile(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Profile:
-    profile = db.scalar(select(Profile).where(Profile.id == current_user.id))
-    if profile:
-        if profile.account_status != "active":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is not active")
-        user_metadata = current_user.claims.get("user_metadata") or {}
-        requested_role_name = user_metadata.get("requested_role")
-        
-        if requested_role_name in ("Travel Planner", "provider"):
-            role_name = "provider"
-            role_desc = "Create and manage travel plans for others."
-        else:
-            role_name = "traveler"
-            role_desc = "Create and manage personal travel plans and community activity."
-
-        role = db.scalar(select(Role).where(Role.name == role_name))
-        if role is None:
-            role = Role(name=role_name, description=role_desc)
-            db.add(role)
-            db.flush()
-        
-        assignment = db.scalar(select(UserRole).where(UserRole.user_id == profile.id, UserRole.role_id == role.id))
-        if assignment is None:
-            db.add(UserRole(user_id=profile.id, role_id=role.id))
-            db.commit()
-        elif assignment.revoked_at is not None:
-            assignment.revoked_at = None
-            db.commit()
-        return profile
-    claims = current_user.claims
-    user_metadata = claims.get("user_metadata") or {}
-    email = str(claims.get("email", ""))
-    username = email.split("@", 1)[0][:80] or f"traveler-{str(current_user.id)[:8]}"
-    profile = Profile(
-        id=current_user.id,
-        username=username,
-        full_name=user_metadata.get("full_name") or claims.get("name"),
-    )
-    db.add(profile)
-    db.commit()
-    db.refresh(profile)
-
-    requested_role_name = user_metadata.get("requested_role")
-    if requested_role_name in ("Travel Planner", "provider"):
-        role_name = "provider"
-        role_desc = "Create and manage travel plans for others."
-    else:
-        role_name = "traveler"
-        role_desc = "Create and manage personal travel plans and community activity."
-
-    role = db.scalar(select(Role).where(Role.name == role_name))
-    if role is None:
-        role = Role(name=role_name, description=role_desc)
-        db.add(role)
-        db.flush()
-        
-    db.add(UserRole(user_id=profile.id, role_id=role.id))
-    db.commit()
+    profile = db.get(Profile, current_user.id)
+    if profile is None:
+        try:
+            profile = _create_profile(db, current_user)
+        except IntegrityError:
+            # A parallel first request created the profile (or took the username) first.
+            db.rollback()
+            profile = db.get(Profile, current_user.id)
+            if profile is None:
+                raise
+    if profile.account_status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is not active")
     return profile
+
+
+def get_active_user(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    profile: Profile = Depends(get_current_profile),
+) -> AuthenticatedUser:
+    """Token identity, after making sure the profile exists and is not suspended."""
+    return current_user

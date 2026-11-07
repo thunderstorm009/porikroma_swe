@@ -6,14 +6,32 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+# Real environment variables always win (override=False). `.env` is the documented
+# file; `.env.local` is also honoured because that is what local setups use.
+load_dotenv(_BACKEND_ROOT / ".env")
+load_dotenv(_BACKEND_ROOT / ".env.local")
 
 
 def _csv(value: str | None, default: str = "") -> list[str]:
     raw = value if value is not None else default
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def normalize_database_url(url: str) -> str:
+    """Pin the PostgreSQL driver to psycopg2, which is the one in requirements.txt.
+
+    SQLAlchemy 2.1 maps a bare ``postgresql://`` URL to psycopg (v3), and Supabase
+    hands out ``postgres://`` URLs that SQLAlchemy rejects outright.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
 
 
 @dataclass(frozen=True)
@@ -45,7 +63,7 @@ def get_settings() -> Settings:
         raise RuntimeError("DATABASE_URL is not configured")
 
     return Settings(
-        database_url=database_url,
+        database_url=normalize_database_url(database_url),
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_publishable_key=os.getenv("SUPABASE_PUBLISHABLE_KEY"),
         supabase_secret_key=os.getenv("SUPABASE_SECRET_KEY"),

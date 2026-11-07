@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Generic, Literal, Optional, TypeVar
+from typing import ClassVar, Generic, Literal, Optional, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -12,6 +12,20 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class PatchModel(APIModel):
+    """Partial update. Fields in ``non_nullable`` may be omitted but not sent as null,
+    because they map to NOT NULL columns (null would surface as a 500)."""
+
+    non_nullable: ClassVar[frozenset[str]] = frozenset()
+
+    @model_validator(mode="after")
+    def _reject_null_for_required_columns(self):
+        nulls = sorted(name for name in self.model_fields_set & self.non_nullable if getattr(self, name) is None)
+        if nulls:
+            raise ValueError(f"These fields cannot be null: {', '.join(nulls)}")
+        return self
 
 
 T = TypeVar("T")
@@ -122,7 +136,9 @@ class TripCreate(APIModel):
         return self
 
 
-class TripUpdate(APIModel):
+class TripUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "travel_type", "traveler_count", "budget", "status", "visibility"})
+
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = None
     destination_id: Optional[UUID] = None
@@ -173,7 +189,9 @@ class ItineraryCreate(APIModel):
     order_index: int = Field(default=0, ge=0)
 
 
-class ItineraryUpdate(APIModel):
+class ItineraryUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "estimated_cost", "order_index"})
+
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = None
     date: Optional[date] = None
@@ -204,7 +222,9 @@ class ExpenseCreate(APIModel):
     expense_date: date
 
 
-class ExpenseUpdate(APIModel):
+class ExpenseUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"category", "description", "amount", "expense_date"})
+
     category: Optional[ExpenseCategory] = None
     description: Optional[str] = Field(default=None, min_length=1, max_length=240)
     amount: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=2)
@@ -234,7 +254,9 @@ class PackingCreate(APIModel):
     is_completed: bool = False
 
 
-class PackingUpdate(APIModel):
+class PackingUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"name", "quantity", "is_completed"})
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=180)
     quantity: Optional[int] = Field(default=None, ge=1, le=999)
     is_completed: Optional[bool] = None
@@ -253,7 +275,9 @@ class JournalCreate(APIModel):
     entry_date: date
 
 
-class JournalUpdate(JournalCreate):
+class JournalUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "content", "entry_date"})
+
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     content: Optional[str] = Field(default=None, min_length=1)
     entry_date: Optional[date] = None
@@ -303,7 +327,9 @@ class QuestionCreate(APIModel):
     tags: list[str] = Field(default_factory=list, max_length=20)
 
 
-class QuestionUpdate(APIModel):
+class QuestionUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "content", "category", "tags"})
+
     title: Optional[str] = Field(default=None, min_length=1, max_length=240)
     content: Optional[str] = Field(default=None, min_length=1)
     destination_id: Optional[UUID] = None
@@ -466,7 +492,9 @@ class ProviderApplicationCreate(APIModel):
     website: Optional[str] = Field(default=None, max_length=500)
 
 
-class ProviderApplicationUpdate(APIModel):
+class ProviderApplicationUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"business_name"})
+
     business_name: Optional[str] = Field(default=None, min_length=2, max_length=200)
     display_name: Optional[str] = Field(default=None, max_length=160)
     description: Optional[str] = None
@@ -518,7 +546,9 @@ class TourCreate(APIModel):
     external_checkout_url: Optional[str] = Field(default=None, max_length=1000)
 
 
-class TourUpdate(APIModel):
+class TourUpdate(PatchModel):
+    non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "description", "capacity", "display_price", "currency"})
+
     destination_id: Optional[UUID] = None
     title: Optional[str] = Field(default=None, min_length=2, max_length=240)
     description: Optional[str] = Field(default=None, min_length=1)

@@ -22,14 +22,15 @@ def forecast(latitude: float, longitude: float, requested_date: date | None = No
             with httpx.Client(timeout=8) as client:
                 response = client.get("https://api.openweathermap.org/data/2.5/forecast", params={"lat": latitude, "lon": longitude, "appid": key, "units": "metric"})
                 response.raise_for_status()
-                return {"date": requested_date, "latitude": latitude, "longitude": longitude, "forecast": response.json().get("list", [])}
+                return {"date": requested_date, "latitude": latitude, "longitude": longitude, "source": "openweather", "forecast": response.json().get("list", [])}
         except (httpx.HTTPError, ValueError):
             logger.warning("OpenWeather request failed, using fallback forecast", exc_info=True)
 
-    # Graceful fallback forecast when key is pending activation or offline
+    # Sample data so the UI still renders when the key is missing or OpenWeather is down.
+    # Marked with source="sample" so clients can label it instead of presenting it as live.
     fallback_list = [
         {"dt_txt": "2026-09-01 12:00:00", "main": {"temp": 29.5, "feels_like": 32.0, "humidity": 78}, "weather": [{"main": "Clear", "description": "clear sky", "icon": "01d"}]},
         {"dt_txt": "2026-09-02 12:00:00", "main": {"temp": 28.0, "feels_like": 30.5, "humidity": 82}, "weather": [{"main": "Clouds", "description": "few clouds", "icon": "02d"}]},
         {"dt_txt": "2026-09-03 12:00:00", "main": {"temp": 27.2, "feels_like": 29.0, "humidity": 85}, "weather": [{"main": "Rain", "description": "light rain", "icon": "10d"}]}
     ]
-    return {"date": requested_date, "latitude": latitude, "longitude": longitude, "forecast": fallback_list}
+    return {"date": requested_date, "latitude": latitude, "longitude": longitude, "source": "sample", "forecast": fallback_list}

@@ -37,9 +37,14 @@ The frontend expects the backend at `http://localhost:8000` by default. Override
 
 ## Verification
 
+Backend tests create and delete data, so they only run against an isolated database
+given in `TEST_DATABASE_URL` (they refuse to fall back to `DATABASE_URL`):
+
 ```bash
+docker run -d --name porikroma-testdb -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=porikroma_test -p 127.0.0.1:55432:5432 postgres:16-alpine
 cd Backend
-pytest -q
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/porikroma_test pytest -q
 
 cd ../Frontend/Porikroma_SWE
 npm run build

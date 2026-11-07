@@ -21,6 +21,8 @@ Usage:
 
 from __future__ import annotations
 
+import os
+
 import argparse
 from datetime import datetime, timezone
 import sys
@@ -145,13 +147,18 @@ def seed_all_roles() -> None:
                     prov.approved_at = datetime.now(timezone.utc)
                 print("  [=] Updated ProviderProfile to approved for active user")
 
-        # Also give developer roles to team usernames
-        team_usernames = {"u2204086", "u2204080", "munzeer.runi", "axorilvortex", "u2204001"}
-        for p in db.scalars(select(Profile)).all():
-            if p.username in team_usernames:
-                for r in ["platform_admin", "provider", "traveler"]:
-                    ensure_role(db, p.id, r)
-                print(f"  [+] Team profile {p.username} -> roles: {sorted(role_names(db, p.id))}")
+        # Team developer accounts by profile id (SEED_TEAM_ADMIN_USER_IDS, comma-separated).
+        # Usernames are user-editable, so they must never decide who becomes admin.
+        for raw_team_id in filter(None, (part.strip() for part in os.getenv("SEED_TEAM_ADMIN_USER_IDS", "").split(","))):
+            try:
+                team_profile = db.get(Profile, UUID(raw_team_id))
+            except ValueError:
+                print(f"Ignoring invalid id in SEED_TEAM_ADMIN_USER_IDS: {raw_team_id}")
+                continue
+            if team_profile:
+                for r_name in ["platform_admin", "provider", "traveler"]:
+                    ensure_role(db, team_profile.id, r_name)
+                print(f"  [+] Team profile {team_profile.username} -> roles: {sorted(role_names(db, team_profile.id))}")
 
         db.commit()
         print("\nAll roles and non-traveler seed assignments completed successfully!")

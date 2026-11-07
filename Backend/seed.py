@@ -133,12 +133,17 @@ def run() -> None:
                 "approved_at": datetime.now(timezone.utc),
             })
 
-        # Grant platform_admin and provider roles to other team developer profiles if they exist
-        team_usernames = {"u2204086", "u2204080", "munzeer.runi", "axorilvortex", "u2204001"}
-        for p in db.scalars(select(Profile)).all():
-            if p.username in team_usernames:
+        # Team developer accounts by profile id (SEED_TEAM_ADMIN_USER_IDS, comma-separated).
+        # Usernames are user-editable, so they must never decide who becomes admin.
+        for raw_team_id in filter(None, (part.strip() for part in os.getenv("SEED_TEAM_ADMIN_USER_IDS", "").split(","))):
+            try:
+                team_profile = db.get(Profile, UUID(raw_team_id))
+            except ValueError:
+                print(f"Ignoring invalid id in SEED_TEAM_ADMIN_USER_IDS: {raw_team_id}")
+                continue
+            if team_profile:
                 for r_name in ["platform_admin", "provider", "traveler"]:
-                    ensure_role(db, p.id, r_name, granted_by=admin_creator_id)
+                    ensure_role(db, team_profile.id, r_name, granted_by=admin_creator_id)
 
         destinations = {}
         for raw_id, name, description, lat, lon, budget, days in DESTINATIONS:

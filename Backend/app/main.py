@@ -68,10 +68,9 @@ def health():
             "test": result,
         }
 
-    except Exception as e:
+    except Exception:
         logger.exception("Database connectivity check failed")
-        return {
-            "status": "error",
-            "database": "not connected",
-            "detail": "Database connectivity check failed",
-        }
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "database": "not connected", "detail": "Database connectivity check failed"},
+        )
