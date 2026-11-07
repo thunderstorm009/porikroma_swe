@@ -10,6 +10,18 @@ Porikroma is a travel planning application with a React/Vite frontend, a FastAPI
 
 ## Local setup
 
+### Quick start (both servers)
+
+```bash
+./run.sh
+```
+
+Starts the backend on http://localhost:8000 and the frontend on http://localhost:5173.
+The first run creates `Backend/.venv` and installs frontend packages. Press Ctrl+C to stop both.
+Both `Backend/.env.local` (or `.env`) and `Frontend/.env.local` (or `.env`) must exist.
+Other ports: `BACKEND_PORT=8001 FRONTEND_PORT=5174 ./run.sh`.
+
+
 ### Backend
 
 ```bash
