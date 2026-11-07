@@ -150,14 +150,17 @@ export const aiService = {
             return {
               id: dest.id || item.id || matchLoc.id,
               name: dest.name || matchLoc.name,
-              match: item.match_score ?? 94,
+              match: item.match_score ?? 0,
               reason: item.reason || 'Matches your budget and schedule',
               image: dest.image_url || matchLoc.image
             };
           });
         }
+        return [];
       } catch (err) {
-        console.warn('AI recommend destinations backend failed, using mock:', err);
+        // Don't pass sample data off as a real recommendation; let the page say it failed.
+        console.warn('AI destination recommendations failed:', err);
+        throw err;
       }
     }
     return mock(MOCK_DESTINATION_RECOMMENDATIONS);
@@ -170,18 +173,17 @@ export const aiService = {
     if (!useMock && tripId) {
       try {
         const response = await apiClient.post('/api/v1/ai/budget-optimization', { trip_id: tripId });
-        if (response?.data) {
-          const d = response.data;
-          const recs = Array.isArray(d.recommendations)
-            ? d.recommendations.map((text, idx) => ({ label: typeof text === 'string' ? text : text.label || 'Optimization', amount: [800, 600, 450, 300][idx % 4] }))
-            : [{ label: 'Transportation adjustment', amount: 600 }];
-          return {
-            savings: Number(d.potential_savings || 2150),
-            recommendations: recs
-          };
-        }
+        const d = response?.data || {};
+        // The API returns advice text only; no per-item amounts are invented here.
+        return {
+          savings: Number(d.potential_savings ?? 0),
+          status: d.current_status || null,
+          recommendations: (Array.isArray(d.recommendations) ? d.recommendations : [])
+            .map((text) => ({ label: typeof text === 'string' ? text : text?.label || 'Optimization', amount: null }))
+        };
       } catch (err) {
-        console.warn('AI budget optimization backend failed, using mock:', err);
+        console.warn('AI budget optimization failed:', err);
+        throw err;
       }
     }
     return mock({ savings: 2150, recommendations: [{ label: 'Hotel alternative', amount: 800 }, { label: 'Local transportation', amount: 600 }, { label: 'Restaurant changes', amount: 450 }, { label: 'Activity adjustment', amount: 300 }] });

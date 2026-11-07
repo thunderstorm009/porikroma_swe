@@ -1,15 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
-  Users, Calendar, Compass, CreditCard, User, LogOut, Search,
+  Users, Calendar, Compass, CreditCard, User, Search,
   X, Check, Loader2, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import SidebarAccount from '../components/SidebarAccount';
 import { useAuth } from '../contexts/useAuth';
 import { tripService } from '../services/tripService';
 
+const SEASON_MONTHS = {
+  spring: [3, 4, 5],
+  summer: [6, 7, 8],
+  autumn: [9, 10, 11],
+  winter: [12, 1, 2],
+};
+
 export default function BrowseGroupsPage({ onNavigate }) {
-  const { user, profile, logout } = useAuth();
+  const { user } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -41,20 +49,27 @@ export default function BrowseGroupsPage({ onNavigate }) {
     tripService.getDiscoverTrips('group')
       .then(items => {
         if (!active) return;
-        setTrips((items || []).map(trip => ({
-          ...trip,
-          destination: trip.destination?.name || trip.title || 'Group Trip',
-          dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
-          openSlots: true,
-          slotsLeft: Math.max(0, 10 - (trip.members?.length || 0)),
-          creator: trip.created_by?.full_name || trip.created_by?.username || 'Creator',
-          creatorBg: 'bg-teal-primary text-white',
-          members: (trip.members || []).slice(0, 3).map(m => ({
-            initial: (m.user?.full_name || m.user?.username || 'T')[0].toUpperCase(),
-            bg: 'bg-navy/80 text-white'
-          })),
-          question: trip.description || 'Why would you like to join our group trip?'
-        })));
+        setTrips((items || []).map(trip => {
+          const tripMembers = trip.members || [];
+          const owner = tripMembers.find((m) => m.role === 'owner')?.user;
+          // Seats come from the trip's traveler count, not a fixed number.
+          const slotsLeft = Math.max(0, Number(trip.traveler_count || 0) - tripMembers.length);
+          return {
+            ...trip,
+            destination: trip.destination?.name || trip.title || 'Group Trip',
+            dates: trip.start_date && trip.end_date ? `${trip.start_date} — ${trip.end_date}` : 'Dates to be confirmed',
+            openSlots: slotsLeft > 0,
+            slotsLeft,
+            isMember: Boolean(user?.id) && tripMembers.some((m) => m.user_id === user.id),
+            creator: owner?.full_name || owner?.username || 'Trip owner',
+            creatorBg: 'bg-teal-primary text-white',
+            members: tripMembers.slice(0, 3).map(m => ({
+              initial: (m.user?.full_name || m.user?.username || 'T')[0].toUpperCase(),
+              bg: 'bg-navy/80 text-white'
+            })),
+            question: trip.description || 'Why would you like to join our group trip?'
+          };
+        }));
       })
       .catch(err => {
         if (!active) return;
@@ -63,7 +78,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
       })
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [reloadToken]);
+  }, [reloadToken, user?.id]);
 
   // Sidebar Menu Items
   const menuItems = [
@@ -78,7 +93,9 @@ export default function BrowseGroupsPage({ onNavigate }) {
   const filteredTrips = trips.filter(trip => {
     const matchesSearch = trip.destination.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSlots = !openSlotsOnly || trip.openSlots;
-    const matchesDate = !dateFilter || (trip.dates && trip.dates.toLowerCase().includes(dateFilter));
+    // Season = month of the start date (the old check looked for the word "summer" in ISO dates).
+    const startMonth = trip.start_date ? Number(String(trip.start_date).slice(5, 7)) : null;
+    const matchesDate = !dateFilter || (startMonth !== null && SEASON_MONTHS[dateFilter]?.includes(startMonth));
     return matchesSearch && matchesSlots && matchesDate;
   });
 
@@ -194,44 +211,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
           </nav>
         </div>
 
-        {/* Internal Portals Quick-Switch & Logout */}
-        <div className="border-t border-border-custom pt-4 px-6 space-y-4">
-          <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block text-left">Internal Portals</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onNavigate('admin-inventory')}
-                className="w-full text-center px-2 py-1.5 bg-navy text-white font-mono text-[11px] font-semibold rounded hover:bg-navy/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => onNavigate('author-plan')}
-                className="w-full text-center px-2 py-1.5 bg-teal-primary text-white font-mono text-[11px] font-semibold rounded hover:bg-teal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Agent Plan
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2 border-t border-border-custom/50">
-            <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              SJ
-            </div>
-            <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
-            </div>
-          </div>
-
-          <button
-            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
+        <SidebarAccount onNavigate={onNavigate} />
       </aside>
 
       {/* Main Content */}
@@ -267,9 +247,10 @@ export default function BrowseGroupsPage({ onNavigate }) {
                   className="w-full sm:w-[160px] pl-3 pr-8 py-2 border border-border-custom rounded-lg text-sm bg-white text-navy focus:outline-none focus:border-teal-primary focus:ring-1 focus:ring-teal-primary transition-all font-sans appearance-none"
                 >
                   <option value="">Any Season</option>
-                  <option value="spring">Spring 2026</option>
-                  <option value="summer">Summer 2026</option>
-                  <option value="autumn">Autumn 2026</option>
+                  <option value="spring">Spring (Mar–May)</option>
+                  <option value="summer">Summer (Jun–Aug)</option>
+                  <option value="autumn">Autumn (Sep–Nov)</option>
+                  <option value="winter">Winter (Dec–Feb)</option>
                 </select>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-navy/50 text-[10px]">▼</div>
               </div>
@@ -427,7 +408,15 @@ export default function BrowseGroupsPage({ onNavigate }) {
                           </div>
                         </div>
 
-                        {/* Trigger Join Button */}
+                        {/* Members open their trip; everyone else can request to join */}
+                        {trip.isMember ? (
+                          <button
+                            onClick={() => onNavigate('trip-detail', trip.id)}
+                            className="w-full text-center text-xs font-semibold py-2 px-3 rounded-lg border border-teal-primary bg-teal-primary text-white hover:bg-teal-hover transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
+                          >
+                            You&apos;re in · Open trip
+                          </button>
+                        ) : (
                         <button
                           onClick={() => handleOpenModal(trip)}
                           disabled={!trip.openSlots}
@@ -440,6 +429,7 @@ export default function BrowseGroupsPage({ onNavigate }) {
                         >
                           {trip.openSlots ? "Request to join" : "Corridor full"}
                         </button>
+                        )}
                       </div>
                     </motion.div>
                   ))}

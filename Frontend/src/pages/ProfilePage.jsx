@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Compass, Calendar, Users, CreditCard, User, LogOut, Menu, X,
+  Compass, Calendar, Users, CreditCard, User, Menu, X,
   Shield, Check, Lock, Camera
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import SidebarAccount from '../components/SidebarAccount';
 import { useAuth } from '../contexts/useAuth';
 import { apiClient } from '../services/apiClient';
 
@@ -20,9 +21,10 @@ export default function ProfilePage({ onNavigate }) {
   const [userProfile, setUserProfile] = useState({
     fullName: "",
     email: "",
-    phone: "+1 (555) 234-5678",
-    location: "Munich, Germany",
-    bio: "Avid hiker and cultural photographer. Learning Japanese for 2 years and looking to explore scenic walking corridors.",
+    // Start empty: these used to be sample values, and Save would write the sample bio to the account.
+    phone: "",
+    location: "",
+    bio: "",
     travelStyle: "Moderate / Scenic Walking",
     currency: "BDT (৳)",
     notifications: {
@@ -38,9 +40,11 @@ export default function ProfilePage({ onNavigate }) {
   const displayName = authProfile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler';
   const displayEmail = authProfile?.email || user?.email || userProfile.email;
   const displayRole = authProfile?.role || 'Traveler';
+  const initials = displayName.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'T';
+  const memberSince = authProfile?.created_at ? new Date(authProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : null;
   React.useEffect(() => {
     if (!authProfile && !user) return;
-    setUserProfile((current) => ({ ...current, fullName: authProfile?.full_name || user?.user_metadata?.full_name || current.fullName, email: authProfile?.email || user?.email || current.email, bio: authProfile?.bio || current.bio }));
+    setUserProfile((current) => ({ ...current, fullName: authProfile?.full_name || user?.user_metadata?.full_name || current.fullName, email: authProfile?.email || user?.email || current.email, bio: authProfile?.bio ?? current.bio }));
   }, [authProfile, user]);
 
   const handleAvatarChange = (e) => {
@@ -154,44 +158,7 @@ export default function ProfilePage({ onNavigate }) {
           </nav>
         </div>
 
-        {/* Internal Portals Quick-Switch & Logout */}
-        <div className="border-t border-border-custom pt-4 px-6 space-y-4">
-          <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block text-left">Internal Portals</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onNavigate('admin-inventory')}
-                className="w-full text-center px-2 py-1.5 bg-navy text-white font-mono text-[11px] font-semibold rounded hover:bg-navy/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => onNavigate('author-plan')}
-                className="w-full text-center px-2 py-1.5 bg-teal-primary text-white font-mono text-[11px] font-semibold rounded hover:bg-teal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Agent Plan
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2 border-t border-border-custom/50">
-            <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              SJ
-            </div>
-            <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">{displayName}</span>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">{displayRole}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => onNavigate('landing')}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
+        <SidebarAccount onNavigate={onNavigate} />
       </aside>
 
       {/* Main Content Area */}
@@ -227,7 +194,7 @@ export default function ProfilePage({ onNavigate }) {
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-teal-primary/15 border-2 border-teal-primary/30 text-teal-primary flex items-center justify-center font-serif text-2xl font-bold">
-                    SJ
+                    {initials}
                   </div>
                 )}
                 <button
@@ -248,13 +215,13 @@ export default function ProfilePage({ onNavigate }) {
                   </span>
                 </div>
                 <span className="text-xs font-mono text-navy/50 block">{displayEmail}</span>
-                <span className="text-xs text-navy/60 block">{userProfile.location}</span>
+                {userProfile.location && <span className="text-xs text-navy/60 block">{userProfile.location}</span>}
               </div>
             </div>
 
             <div className="flex items-center gap-3 self-stretch sm:self-auto justify-end border-t sm:border-t-0 border-border-custom/50 pt-4 sm:pt-0">
               <span className="text-xs font-mono text-navy/50 uppercase tracking-widest">
-                Member since July 2026
+                {memberSince ? `Member since ${memberSince}` : ''}
               </span>
             </div>
           </div>
@@ -312,9 +279,9 @@ export default function ProfilePage({ onNavigate }) {
                   <input
                     id="pEmail"
                     type="email"
-                    required
+                    readOnly
+                    title="Your sign-in email can't be changed here"
                     value={userProfile.email}
-                    onChange={(e) => setUserProfile({ ...userProfile, email: e.target.value })}
                     className="w-full bg-fog border border-border-custom text-navy text-sm px-3.5 py-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
                   />
                 </div>
@@ -327,6 +294,7 @@ export default function ProfilePage({ onNavigate }) {
                     id="pPhone"
                     type="tel"
                     value={userProfile.phone}
+                    placeholder="+880 1XXX-XXXXXX"
                     onChange={(e) => setUserProfile({ ...userProfile, phone: e.target.value })}
                     className="w-full bg-fog border border-border-custom text-navy font-mono text-sm px-3.5 py-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
                   />
@@ -340,11 +308,13 @@ export default function ProfilePage({ onNavigate }) {
                     id="pLoc"
                     type="text"
                     value={userProfile.location}
+                    placeholder="e.g. Chattogram"
                     onChange={(e) => setUserProfile({ ...userProfile, location: e.target.value })}
                     className="w-full bg-fog border border-border-custom text-navy text-sm px-3.5 py-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
                   />
                 </div>
               </div>
+              <p className="text-[11px] text-navy/50">Phone number and home location are not saved to your account yet; name and bio are.</p>
 
               <div className="space-y-1">
                 <label htmlFor="pBio" className="text-xs font-semibold text-navy/70 block">
@@ -450,9 +420,10 @@ export default function ProfilePage({ onNavigate }) {
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-border-custom">
                 {isSaved && (
                   <span className="text-xs font-mono text-teal-primary font-semibold flex items-center gap-1">
-                    <Check size={14} /> Preferences updated
+                    <Check size={14} /> Name and bio saved
                   </span>
                 )}
+                <span className="text-[11px] text-navy/50 mr-auto">Travel preferences and notification choices are not saved to your account yet.</span>
                 <button
                   type="submit"
                   className="bg-teal-primary hover:bg-teal-hover text-white text-xs font-semibold px-5 py-2.5 rounded-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
@@ -472,11 +443,11 @@ export default function ProfilePage({ onNavigate }) {
                     <Shield className="text-teal-primary" size={20} />
                     <div>
                       <h4 className="text-sm font-semibold text-navy">Identity Verification</h4>
-                      <p className="text-xs text-navy/60">Passport/ID verified for solo companion matching eligibility.</p>
+                      <p className="text-xs text-navy/60">Passport/ID verification for solo companion matching is not available yet.</p>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 bg-teal-primary/10 border border-teal-primary/20 text-teal-primary text-xs font-mono font-bold rounded">
-                    Verified
+                  <span className="px-2.5 py-1 bg-navy/5 border border-border-custom text-navy/60 text-xs font-mono font-bold rounded">
+                    Not available
                   </span>
                 </div>
 

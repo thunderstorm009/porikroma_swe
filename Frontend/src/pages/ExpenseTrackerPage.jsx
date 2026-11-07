@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Compass, Calendar, Users, CreditCard, User, Menu, LogOut, X,
+  Compass, Calendar, Users, CreditCard, User, Menu, X,
   Plus, Utensils, Car, Bed, Compass as ActivityIcon, Tag,
   ChevronDown, Filter, Trash2, AlertTriangle, Receipt
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
+import SidebarAccount from '../components/SidebarAccount';
 import { BANGLADESH_PERSONAL_EXPENSES, BANGLADESH_GROUP_EXPENSES } from '../mockData';
 import { expenseService } from '../services/expenseService';
 import { useAuth } from '../contexts/useAuth';
@@ -25,7 +26,7 @@ const CATEGORIES = {
 
 export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTripId = null, tripsLoading = false }) {
   const { tripId: routeTripId } = useParams();
-  const { user, profile, logout } = useAuth();
+  const { user } = useAuth();
   const useMock = import.meta.env.VITE_USE_MOCK_DATA === 'true';
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -283,7 +284,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
     <div className="min-h-screen bg-[#F5F6F4]/40 text-navy font-sans flex flex-col lg:flex-row relative">
       {/* Live Region for Screen Readers */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        Current total expense is ${totalAmount.toFixed(2)}. {isOverBudget ? 'Warning: Group spend is over budget.' : ''}
+        Current total expense is ৳{totalAmount.toFixed(2)}. {isOverBudget ? 'Warning: Group spend is over budget.' : ''}
       </div>
 
       {/* Mobile Top Header */}
@@ -355,44 +356,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
           </nav>
         </div>
 
-        {/* Internal Portals Quick-Switch & Logout */}
-        <div className="border-t border-border-custom pt-4 px-6 space-y-4">
-          <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block text-left">Internal Portals</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onNavigate('admin-inventory')}
-                className="w-full text-center px-2 py-1.5 bg-navy text-white font-mono text-[11px] font-semibold rounded hover:bg-navy/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => onNavigate('author-plan')}
-                className="w-full text-center px-2 py-1.5 bg-teal-primary text-white font-mono text-[11px] font-semibold rounded hover:bg-teal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Agent Plan
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2 border-t border-border-custom/50">
-            <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              SJ
-            </div>
-            <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
-            </div>
-          </div>
-
-          <button
-            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
+        <SidebarAccount onNavigate={onNavigate} />
       </aside>
 
       {/* Main Content Area */}
@@ -494,7 +458,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                         key={cat.name}
                         className={`h-full ${cat.color} transition-all duration-300`}
                         style={{ width: `${cat.percent}%` }}
-                        title={`${cat.name}: $${cat.total.toFixed(2)} (${cat.percent.toFixed(1)}%)`}
+                        title={`${cat.name}: ৳${cat.total.toFixed(2)} (${cat.percent.toFixed(1)}%)`}
                       />
                     )
                   ))}
@@ -506,7 +470,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                     <div key={cat.name} className="flex items-center gap-1.5">
                       <span className={`w-2.5 h-2.5 rounded-full ${cat.color} inline-block`} />
                       <span className="font-medium">{cat.name}</span>
-                      <span className="text-navy/40">${cat.total.toFixed(0)}</span>
+                      <span className="text-navy/40">৳{cat.total.toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
@@ -524,10 +488,10 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                   </span>
                   <div className="font-mono text-3xl md:text-4xl font-bold text-navy mt-1 tracking-tight flex items-baseline gap-3">
                     <span className={isOverBudget ? "text-amber-accent" : "text-navy"}>
-                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ৳{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-sm font-sans font-normal text-navy/50">
-                      of ${tripBudgetNum.toLocaleString('en-US', { minimumFractionDigits: 2 })} budget
+                      of ৳{tripBudgetNum.toLocaleString('en-US', { minimumFractionDigits: 2 })} budget
                     </span>
                   </div>
                 </div>
@@ -550,7 +514,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-navy/50">
                   <span>{budgetPercent}% used</span>
-                  <span>${Math.max(0, tripBudgetNum - totalAmount).toFixed(2)} remaining</span>
+                  <span>৳{Math.max(0, tripBudgetNum - totalAmount).toFixed(2)} remaining</span>
                 </div>
               </div>
 
@@ -565,7 +529,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                       </div>
                       <div className="overflow-hidden text-left">
                         <span className="text-xs font-semibold text-navy block truncate">{m.name}</span>
-                        <span className="font-mono text-xs text-navy/60 font-semibold block">${m.amountLogged.toFixed(2)}</span>
+                        <span className="font-mono text-xs text-navy/60 font-semibold block">৳{m.amountLogged.toFixed(2)}</span>
                       </div>
                     </div>
                   ))}
@@ -631,7 +595,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                     {/* Amount */}
                     <div className="space-y-1">
                       <label htmlFor="expAmount" className="text-xs font-semibold text-navy/70 block">
-                        Amount ($USD)
+                        Amount (৳ BDT)
                       </label>
                       <input
                         id="expAmount"
@@ -689,7 +653,8 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                           onChange={(e) => setFormData({ ...formData, paidById: e.target.value })}
                           className="w-full bg-fog border border-border-custom text-navy text-sm px-3 py-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
                         >
-                          {currentTrip?.members?.map(m => (
+                          {/* The server records whoever saves the expense as the payer, so only offer yourself. */}
+                          {(useMock ? currentTrip?.members : currentTrip?.members?.filter((m) => m.userId === user?.id))?.map(m => (
                             <option key={m.id} value={m.id}>{m.name}</option>
                           ))}
                         </select>
@@ -705,7 +670,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                     <input
                       id="expDesc"
                       type="text"
-                      placeholder="e.g. Bus tickets from Kyoto station"
+                      placeholder="e.g. Bus tickets to Sylhet"
                       required
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -777,7 +742,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
                         {month}
                       </span>
                       <span className="font-mono text-xs font-semibold text-navy/40">
-                        ${items.reduce((s, i) => s + Number(i.amount), 0).toFixed(2)}
+                        ৳{items.reduce((s, i) => s + Number(i.amount), 0).toFixed(2)}
                       </span>
                     </div>
 
@@ -830,7 +795,7 @@ export default function ExpenseTrackerPage({ onNavigate, trips = [], initialTrip
 
                               <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-border-custom/50 pt-2 sm:pt-0">
                                 <span className="font-mono text-base font-bold text-navy">
-                                  ${Number(item.amount).toFixed(2)}
+                                  ৳{Number(item.amount).toFixed(2)}
                                 </span>
 
                                 <button

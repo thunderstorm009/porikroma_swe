@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, Bot, CalendarDays, Check, ChevronRight, DollarSign, MapPinned, MessageCircle, Phone, Plus, Send, Sparkles, Users } from 'lucide-react';
 import TravelShell from '../components/TravelShell';
 import TravelMap from '../components/TravelMap';
+import TripItinerary from '../components/TripItinerary';
 import { DESTINATIONS, MOCK_EMERGENCY_LOCATIONS, MOCK_ITINERARY, MOCK_WEATHER, MOCK_AI_SUMMARY } from '../data/travelData';
 import { aiService } from '../services/aiService';
 import { chatService } from '../services/chatService';
@@ -45,6 +46,8 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
   const [summary, setSummary] = useState(useMock ? MOCK_AI_SUMMARY : null);
   const [itinerary, setItinerary] = useState(trip?.itinerary?.length ? trip.itinerary : MOCK_ITINERARY);
   const [optimizing, setOptimizing] = useState(false);
+  const [itineraryItems, setItineraryItems] = useState([]);
+  const [itineraryAdvice, setItineraryAdvice] = useState('');
   const [weather, setWeather] = useState(() => getWeather(trip));
   const [expenses, setExpenses] = useState(useMock ? [{ id: 'e1', description: 'Hotel advance payment', category: 'Lodging', amount: 9500, paidBy: currentUserName }, { id: 'e2', description: 'Private microbus', category: 'Transport', amount: 8500, paidBy: 'Abrar' }, { id: 'e3', description: 'Group dinner', category: 'Food', amount: 2400, paidBy: 'Huzaifa' }] : []);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -66,18 +69,24 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
 
   const destination = useMemo(() => getDestination(trip), [trip]);
   const tripId = trip?.id;
+  // A public trip can be opened by anyone signed in, but budget, chat and the AI summary
+  // are members-only on the server. Non-members get a preview instead of a page of 403s.
+  const isMember = useMock || !user?.id || (Array.isArray(trip?.members) && trip.members.some((m) => String(m.userId) === String(user.id)));
+  const myRole = Array.isArray(trip?.members) ? trip.members.find((m) => String(m.userId) === String(user?.id))?.role : null;
+  const canManageRequests = ['owner', 'admin'].includes(String(myRole || '').toLowerCase());
+  const [joinState, setJoinState] = useState({ status: 'idle', message: '' });
 
   // Summary, weather and nearby emergency help depend only on the trip and its place,
   // not on every re-render of the trip object.
   useEffect(() => {
-    if (!tripId) return undefined;
+    if (!tripId || !isMember) return undefined;
     let ignore = false;
     aiService.generateTripSummary(trip)
       .then((result) => { if (!ignore && result) setSummary(result); })
       .catch((error) => { console.warn('AI trip summary unavailable:', error); });
     return () => { ignore = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripId]);
+  }, [tripId, isMember]);
 
   useEffect(() => {
     let ignore = false;
@@ -93,18 +102,22 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
   }, [destination]);
 
   useEffect(() => {
-    if (useMock || !tripId) return undefined;
+    if (useMock || !tripId || !isMember) return undefined;
     let active = true;
     expenseService.list(tripId)
       .then((items) => { if (active && Array.isArray(items)) setExpenses(items); })
       .catch((error) => console.error('Failed to load persisted trip expenses:', error));
 
-    if (trip?.type === 'Group' || trip?.travel_type === 'group') {
-      // Only owners/admins may list requests; a 403 for regular members is expected.
+    if ((trip?.type === 'Group' || trip?.travel_type === 'group') && canManageRequests) {
+      // Only owners/admins may list requests (the server returns 403 to everyone else).
       tripService.getJoinRequests(tripId)
         .then((items) => { if (active && Array.isArray(items)) setJoinRequests(items); })
         .catch(() => {});
     }
+
+    tripService.getItinerary(tripId)
+      .then((items) => { if (active && Array.isArray(items)) setItineraryItems(items); })
+      .catch((error) => console.error('Failed to load itinerary:', error));
 
     chatService.getMessages(tripId)
       .then((history) => { if (active) setMessages(history); })
@@ -128,7 +141,7 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
       wsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripId, trip?.type, trip?.travel_type, useMock]);
+  }, [tripId, trip?.type, trip?.travel_type, useMock, isMember, canManageRequests]);
 
   const budget = useMemo(() => Number(trip?.budget || 0), [trip]);
   const expenseList = useMemo(() => (Array.isArray(expenses) ? expenses : []), [expenses]);
@@ -140,19 +153,42 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
     return MOCK_WEATHER[destination?.id] || MOCK_WEATHER.default;
   }, [weather, destination]);
 
+  const rainyDay = weatherList.find((day) => (day.rain || 0) > 50);
   const summaryData = summary || { headline: 'Preparing your trip summary…', budget: '—', weather: '—', intensity: '—', insights: [] };
   const itineraryList = Array.isArray(itinerary) ? itinerary : MOCK_ITINERARY;
 
   const optimizeItinerary = async () => {
     setOptimizing(true);
     try {
-      const result = await aiService.optimizeItinerary(trip);
-      setItinerary(result.itinerary);
+      if (useMock) {
+        const result = await aiService.optimizeItinerary(trip);
+        setItinerary(result.itinerary);
+      } else {
+        const stops = itineraryItems.map((item) => `${item.date || 'unscheduled'} ${item.start_time || ''} ${item.title}${item.location_name ? ` at ${item.location_name}` : ''}`).join('; ');
+        const response = await aiService.chat(`Suggest how to improve our itinerary for less travel time and better weather fit. Current stops: ${stops || 'none yet'}.`, { trip, destination, conversationId: aiConversationId });
+        if (response.conversationId) setAiConversationId(response.conversationId);
+        setItineraryAdvice(response.message || '');
+      }
+    } catch (error) {
+      setItineraryAdvice(`The assistant is unavailable right now (${error?.message || 'unknown error'}).`);
     } finally {
       setOptimizing(false);
     }
   };
-  const optimizeBudget = async () => { const advice = await aiService.optimizeBudget(trip); setBudgetAdvice(advice); };
+  const [budgetAdviceError, setBudgetAdviceError] = useState('');
+  const [optimizingBudget, setOptimizingBudget] = useState(false);
+  const optimizeBudget = async () => {
+    setBudgetAdviceError('');
+    setOptimizingBudget(true);
+    try {
+      setBudgetAdvice(await aiService.optimizeBudget(trip));
+    } catch (error) {
+      setBudgetAdvice(null);
+      setBudgetAdviceError(error.message || 'Budget advice is unavailable right now.');
+    } finally {
+      setOptimizingBudget(false);
+    }
+  };
 
   // Sub-resources are saved through their own endpoints; the parent only needs the new local state.
   const publishTripState = (patch) => { if (onTripStateChange) onTripStateChange({ ...trip, ...patch }); };
@@ -274,15 +310,45 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
   const destinationTitle = destination?.name || (typeof trip.destination === 'string' ? trip.destination : (trip.title || 'Trip Workspace'));
   const tripMembers = Array.isArray(trip.members) ? trip.members : [];
 
+  if (!isMember) {
+    const requestToJoin = async () => {
+      setJoinState({ status: 'sending', message: '' });
+      try {
+        await tripService.createJoinRequest(trip.id, 'I would like to join this trip.');
+        setJoinState({ status: 'sent', message: 'Request sent. The trip owner will review it.' });
+      } catch (error) {
+        setJoinState({ status: 'error', message: error.message || 'Could not send the request.' });
+      }
+    };
+    const canRequest = trip.visibility === 'public' && String(trip.status || '').toLowerCase() === 'planning';
+    return (
+      <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="Browse Groups" title="Trip preview">
+        <div className="travel-panel travel-panel-pad" style={{ maxWidth: 640 }}>
+          <span className="travel-kicker">{trip.type || 'Group'} trip · {trip.status || 'Planning'} · Public preview</span>
+          <h2 style={{ marginTop: 8 }}>{destinationTitle}</h2>
+          <p style={{ color: 'var(--travel-muted)' }}>{trip.dates || 'Dates to be confirmed'} · {tripMembers.length || 1} of {trip.traveler_count || tripMembers.length || 1} travelers</p>
+          {trip.description && <p>{trip.description}</p>}
+          <div className="travel-alert" role="status" style={{ marginTop: 14 }}><span>You are not a member of this trip yet. Budget, chat and the shared plan open once the owner accepts your request.</span></div>
+          {joinState.message && <div className="travel-alert" role={joinState.status === 'error' ? 'alert' : 'status'} style={{ marginTop: 10 }}><span>{joinState.message}</span></div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+            {canRequest && joinState.status !== 'sent' && <button className="travel-button" onClick={requestToJoin} disabled={joinState.status === 'sending'}>{joinState.status === 'sending' ? 'Sending…' : 'Request to join'}</button>}
+            <button className="travel-button travel-button-ghost" onClick={() => onNavigate('browse-groups')}>Browse groups</button>
+            <button className="travel-button travel-button-ghost" onClick={() => onNavigate('dashboard')}>My trips</button>
+          </div>
+        </div>
+      </TravelShell>
+    );
+  }
+
   return <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active="My Trips" title="Trip workspace">
     <div className="travel-workspace-header"><div><span className="travel-kicker">{trip.type || 'Group'} trip · {trip.status || 'Planning'}</span><h2>{destinationTitle}</h2><p>{trip.dates || 'Dates to be confirmed'} · {tripMembers.length || 1} traveler{(tripMembers.length || 1) === 1 ? '' : 's'} · Shared workspace</p></div><div className="travel-workspace-actions"><button className="travel-button travel-button-ghost" onClick={() => onNavigate('dashboard')}><ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> All trips</button><button className="travel-button travel-button-ghost" onClick={() => onNavigate('ask-question', { destination: destinationTitle, category: 'Destinations', tripContext: { travelers: tripMembers.length || 1, budget: trip.budget, dates: trip.dates } })}>Ask Community</button><button className="travel-button" onClick={() => { setActiveTab('emergency'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>🚨 Emergency</button></div></div>
     <div className="travel-workspace-tabs" role="tablist">{tabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)} role="tab" aria-selected={activeTab === tab.id}>{tab.icon}{tab.label}</button>)}</div>
 
     {activeTab === 'overview' && <div className="travel-grid" style={{ gap: 17 }}>
-      <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{tripMembers.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weatherList[0]?.temp ?? 28}°C</strong><span>{weatherList[0]?.label ?? 'Clear'}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summaryData.intensity || 'Moderate'}</strong><span>{summaryData.activities ?? itineraryList.length} recommended activities</span></div></div>
-      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summaryData.headline || 'Trip Summary'}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summaryData.budget || 'Balanced'], ['Weather', summaryData.weather || 'Favorable'], ['Intensity', summaryData.intensity || 'Moderate']].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{(summaryData.insights || []).map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weatherList[0]?.isSample && <small style={{ gridColumn: '1 / -1', color: 'var(--travel-muted)' }}>Live forecast unavailable — showing sample conditions.</small>}{weatherList.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day?.split?.(',')[0] || day.day}</small><small style={{ color: (day.rain || 0) > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain || 0}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />Move the beach activity from Day 2 to Day 3.</span></div></div></div>
+      <div className="travel-metric-row"><div className="travel-panel travel-metric"><span>Travelers</span><strong>{tripMembers.length || 1}</strong><span>{trip.type === 'Group' ? 'Shared trip' : 'Just you'}</span></div><div className="travel-panel travel-metric"><span>Trip budget</span><strong>৳{budget.toLocaleString()}</strong><span>{trip.selectedPlan?.name || 'Balanced plan'}</span></div><div className="travel-panel travel-metric"><span>Weather now</span><strong>{weatherList[0]?.temp ?? 28}°C</strong><span>{weatherList[0]?.label ?? 'Clear'}</span></div><div className="travel-panel travel-metric"><span>Plan intensity</span><strong>{summaryData.intensity || 'Moderate'}</strong><span>{useMock ? (summaryData.activities ?? itineraryList.length) : itineraryItems.length} planned {useMock ? 'recommended activities' : (itineraryItems.length === 1 ? 'stop' : 'stops')}</span></div></div>
+      <div className="travel-grid travel-grid-2"><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ AI trip summary</span><h3>{summaryData.headline || 'Trip Summary'}</h3><div className="travel-grid travel-grid-3" style={{ gap: 8, margin: '16px 0' }}>{[['Budget', summaryData.budget || 'Balanced'], ['Weather', summaryData.weather || 'Favorable'], ['Intensity', summaryData.intensity || 'Moderate']].map(([label, value]) => <div key={label} className="travel-panel" style={{ padding: 11, boxShadow: 'none' }}><span className="travel-stat-label">{label}</span><strong style={{ display: 'block', fontSize: 11, marginTop: 7 }}>{value}</strong></div>)}</div><ul className="travel-insight-list">{(summaryData.insights || []).map((insight) => <li key={insight}><Check size={13} />{insight}</li>)}</ul></div><div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Next up</span><h2>Weather-aware rhythm</h2></div><button className="travel-link" onClick={() => setActiveTab('itinerary')}>Full itinerary</button></div><div className="travel-weather-row" style={{ marginTop: 18 }}>{weatherList[0]?.isSample && <small style={{ gridColumn: '1 / -1', color: 'var(--travel-muted)' }}>Live forecast unavailable — showing sample conditions.</small>}{weatherList.map((day) => <div className="travel-weather-card" key={day.day}><span>{day.icon}</span><strong>{day.temp}°</strong><small>{day.day?.split?.(',')[0] || day.day}</small><small style={{ color: (day.rain || 0) > 50 ? '#b86e20' : 'var(--travel-muted)' }}>{day.rain || 0}% rain</small></div>)}</div><div className="travel-alert" style={{ marginTop: 14 }}><span>🌧</span><span><strong>Weather-aware suggestion</strong><br />{useMock ? 'Move the beach activity from Day 2 to Day 3.' : (rainyDay ? `Rain is likely on ${String(rainyDay.day).split(',')[0]}; keep outdoor plans flexible that day.` : 'No heavy rain in the outlook; outdoor plans look fine.')}</span></div></div></div>
       <div className="travel-grid travel-grid-2">
-        <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div><span className="travel-pill green">94% match</span></div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.</p></div>
+        <div className="travel-panel travel-panel-pad"><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-card-kicker">Saved plan</span><h2>{trip.selectedPlan?.name || 'Balanced Experience'}</h2></div>{useMock && <span className="travel-pill green">94% match</span>}</div><p style={{ color: 'var(--travel-muted)', fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>{useMock ? 'A comfortable hotel, seven activities, moderate travel time and enough open space for the group to decide together.' : (trip.description || 'Add stops in the Itinerary tab to shape the plan together.')}</p></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 17 }}>
           {joinRequests.filter(r => r.status === 'pending').length > 0 && (
             <div className="travel-panel travel-panel-pad">
@@ -326,11 +392,12 @@ export default function TripWorkspacePage({ onNavigate, trip, onTripStateChange,
       </div>
     </div>}
 
-    {activeTab === 'itinerary' && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itineraryList.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{(day.items || []).map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destinationTitle}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
+    {activeTab === 'itinerary' && useMock && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Grouped by place, paced around the weather.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Optimizing…' : 'Optimize with AI'}</button></div>{optimizing && <div className="travel-alert"><Sparkles size={15} color="#2d6a4f" /><span>✨ Rebalancing travel time, weather and nearby stops…</span></div>}<div className="travel-timeline">{itineraryList.map((day) => <div className="travel-panel travel-day" key={day.day}><h3>{day.day}</h3><p>{day.date}</p>{(day.items || []).map((item) => <div className="travel-itinerary-row" key={`${day.day}-${item.time}`}><time>{item.time}</time><span className="travel-itinerary-dot" /><div><strong>{item.title}</strong><small>{item.detail} · {item.location || destinationTitle}</small><small>{item.duration || 'Flexible'} · ৳{Number(item.cost || 0).toLocaleString()} · {item.notes || 'Add a note before you go.'}</small></div><span className="travel-itinerary-type">{item.category || item.type}</span></div>)}</div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span><h3>Keep Day 2 loose.</h3><p>Rain probability is highest then, so the plan now favors a flexible cafe stop and moves the long beach window to the clearest morning.</p><ul className="travel-insight-list"><li>Reduced transfer time by 42 minutes</li><li>Grouped Inani and sunset photography</li><li>Added a rain-friendly backup activity</li></ul></div></div>}
+    {activeTab === 'itinerary' && !useMock && <div className="travel-grid travel-grid-2"><div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared itinerary</h2><p>Everyone in the trip sees and adds to the same plan.</p></div><button className="travel-button" onClick={optimizeItinerary} disabled={optimizing}><Sparkles size={14} /> {optimizing ? 'Asking AI…' : 'Optimize with AI'}</button></div><TripItinerary tripId={trip.id} items={itineraryItems} onItemsChange={setItineraryItems} canEdit={canManageRequests} defaultDate={trip.start_date || ''} destinationTitle={destinationTitle} /></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Itinerary intelligence</span>{itineraryAdvice ? <><h3>AI suggestions</h3><p style={{ whiteSpace: 'pre-wrap' }}>{itineraryAdvice}</p></> : <><h3>Ask AI to review the plan.</h3><p>“Optimize with AI” sends your current stops and trip details to the assistant and shows its suggestions here. Your stops are never changed automatically.</p></>}</div></div>}
 
-    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Live Places API</span></div><TravelMap location={destination} itinerary={(itinerary || []).flatMap(day => day.items || [])} height="570px" /></div>}
+    {activeTab === 'map' && <div><div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Trip map</h2><p>Hotels, attractions, restaurants and nearby services in one location layer.</p></div><span className="travel-pill green"><span className="travel-live-dot" /> Live Places API</span></div><TravelMap location={destination} itinerary={useMock ? (itinerary || []).flatMap(day => day.items || []) : itineraryItems} height="570px" /></div>}
 
-    {activeTab === 'budget' && <div className="travel-grid travel-grid-2"><div>{expenseError && <div className="travel-alert" role="alert"><span>{expenseError}</span></div>}<div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared budget</h2><p>Track expenses now; settle with the group easily.</p></div><button className="travel-button" onClick={() => { setEditingExpenseId(null); setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: currentUserName }); setShowExpenseForm(!showExpenseForm); }}><Plus size={14} /> Add expense</button></div><div className="travel-panel travel-panel-pad"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}><div><span className="travel-stat-label">Spent so far</span><strong style={{ display: 'block', font: '700 28px var(--font-mono)', marginTop: 9 }}>৳{totalExpenses.toLocaleString()}</strong></div><span className="travel-pill green">{Math.round((totalExpenses / (budget || 1)) * 100)}% allocated</span></div><div className="travel-progress" style={{ marginTop: 16 }}><span style={{ width: `${Math.min(100, (totalExpenses / (budget || 1)) * 100)}%` }} /></div>{showExpenseForm && <form onSubmit={saveExpense} className="travel-form-grid" style={{ marginTop: 20, borderTop: '1px solid var(--travel-border)', paddingTop: 18 }}><div className="travel-field"><label htmlFor="expense-description">Description</label><input id="expense-description" className="travel-input" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="e.g. Beach dinner" required /></div><div className="travel-field"><label htmlFor="expense-amount">Amount (৳)</label><input id="expense-amount" type="number" className="travel-input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="1200" required /></div><div className="travel-field"><label htmlFor="expense-category">Category</label><select id="expense-category" className="travel-select" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Food</option><option>Lodging</option><option>Transport</option><option>Activity</option><option>Shopping</option><option>Emergency</option><option>Other</option></select></div><div className="travel-field"><label htmlFor="expense-paid-by">Paid by</label><select id="expense-paid-by" className="travel-select" value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}><option>{currentUserName}</option><option>Sarah</option><option>Abrar</option><option>Huzaifa</option><option>Faizul</option><option>Munzeer</option></select></div><button className="travel-button" type="submit">{editingExpenseId ? 'Update expense' : 'Save expense'}</button></form>}</div><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><span className="travel-card-kicker">Expense ledger</span>{expenseList.map((expense) => <div className="travel-expense-row" key={expense.id}><span><strong>{expense.description}</strong><small>{expense.category} · paid by {typeof expense.paidBy === 'object' ? expense.paidBy?.name : expense.paidBy}</small></span><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="travel-expense-amount">৳{Number(expense.amount).toLocaleString()}</span><button className="travel-link" style={{ padding: 0, fontSize: 10 }} onClick={() => editExpense(expense)}>Edit</button><button className="travel-remove" style={{ padding: 0 }} onClick={() => deleteExpense(expense.id)}>Delete</button></span></div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Optimize budget</span><h3>Keep ৳{Math.max(0, budget - totalExpenses).toLocaleString()} flexible.</h3><p>Ask the planner to find savings while protecting the parts of your trip that matter most.</p><button className="travel-button" style={{ marginTop: 15 }} onClick={optimizeBudget}><Sparkles size={14} /> Optimize budget</button>{budgetAdvice && <div style={{ marginTop: 20 }}><div className="travel-pill green">Potential savings: ৳{budgetAdvice.savings.toLocaleString()}</div><ul className="travel-insight-list">{(budgetAdvice.recommendations || []).map((item) => <li key={item.label}>{item.label} <strong style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>− ৳{item.amount}</strong></li>)}</ul><button className="travel-link" style={{ padding: 0, marginTop: 12 }} onClick={() => setBudgetAdvice(null)}>Applied to trip plan ✓</button></div>}</div></div>}
+    {activeTab === 'budget' && <div className="travel-grid travel-grid-2"><div>{expenseError && <div className="travel-alert" role="alert"><span>{expenseError}</span></div>}<div className="travel-section-heading" style={{ marginTop: 0 }}><div><h2>Shared budget</h2><p>Track expenses now; settle with the group easily.</p></div><button className="travel-button" onClick={() => { setEditingExpenseId(null); setExpenseForm({ description: '', category: 'Food', amount: '', paidBy: currentUserName }); setShowExpenseForm(!showExpenseForm); }}><Plus size={14} /> Add expense</button></div><div className="travel-panel travel-panel-pad"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}><div><span className="travel-stat-label">Spent so far</span><strong style={{ display: 'block', font: '700 28px var(--font-mono)', marginTop: 9 }}>৳{totalExpenses.toLocaleString()}</strong></div><span className="travel-pill green">{Math.round((totalExpenses / (budget || 1)) * 100)}% allocated</span></div><div className="travel-progress" style={{ marginTop: 16 }}><span style={{ width: `${Math.min(100, (totalExpenses / (budget || 1)) * 100)}%` }} /></div>{showExpenseForm && <form onSubmit={saveExpense} className="travel-form-grid" style={{ marginTop: 20, borderTop: '1px solid var(--travel-border)', paddingTop: 18 }}><div className="travel-field"><label htmlFor="expense-description">Description</label><input id="expense-description" className="travel-input" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} placeholder="e.g. Beach dinner" required /></div><div className="travel-field"><label htmlFor="expense-amount">Amount (৳)</label><input id="expense-amount" type="number" className="travel-input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="1200" required /></div><div className="travel-field"><label htmlFor="expense-category">Category</label><select id="expense-category" className="travel-select" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}><option>Food</option><option>Lodging</option><option>Transport</option><option>Activities</option><option>Shopping</option><option>Emergency</option><option>Other</option></select></div><div className="travel-field"><label htmlFor="expense-paid-by">Paid by</label><select id="expense-paid-by" className="travel-select" value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}><option>{currentUserName}</option></select></div><button className="travel-button" type="submit">{editingExpenseId ? 'Update expense' : 'Save expense'}</button></form>}</div><div className="travel-panel travel-panel-pad" style={{ marginTop: 12 }}><span className="travel-card-kicker">Expense ledger</span>{expenseList.map((expense) => <div className="travel-expense-row" key={expense.id}><span><strong>{expense.description}</strong><small>{expense.category} · paid by {typeof expense.paidBy === 'object' ? expense.paidBy?.name : expense.paidBy}</small></span><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="travel-expense-amount">৳{Number(expense.amount).toLocaleString()}</span><button className="travel-link" style={{ padding: 0, fontSize: 10 }} onClick={() => editExpense(expense)}>Edit</button><button className="travel-remove" style={{ padding: 0 }} onClick={() => deleteExpense(expense.id)}>Delete</button></span></div>)}</div></div><div className="travel-panel travel-panel-pad travel-ai-card"><span className="travel-ai-title">✦ Optimize budget</span><h3>Keep ৳{Math.max(0, budget - totalExpenses).toLocaleString()} flexible.</h3><p>Ask the planner to find savings while protecting the parts of your trip that matter most.</p><button className="travel-button" style={{ marginTop: 15 }} onClick={optimizeBudget} disabled={optimizingBudget}><Sparkles size={14} /> {optimizingBudget ? 'Thinking…' : 'Optimize budget'}</button>{budgetAdviceError && <div className="travel-alert" role="alert" style={{ marginTop: 14 }}><span>{budgetAdviceError}</span></div>}{budgetAdvice && <div style={{ marginTop: 20 }}><div className="travel-pill green">{budgetAdvice.status ? `${budgetAdvice.status[0].toUpperCase()}${budgetAdvice.status.slice(1)} · ` : ''}Potential savings: ৳{Number(budgetAdvice.savings || 0).toLocaleString()}</div><ul className="travel-insight-list">{(budgetAdvice.recommendations || []).map((item) => <li key={item.label}><Check size={13} />{item.label}{item.amount != null && <strong style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>− ৳{item.amount}</strong>}</li>)}</ul><button className="travel-link" style={{ padding: 0, marginTop: 12 }} onClick={() => setBudgetAdvice(null)}>Dismiss</button></div>}</div></div>}
 
     {activeTab === 'chat' && <div className="travel-grid travel-grid-2"><div className="travel-panel travel-chat">{chatStatus === 'reconnecting' && <div className="travel-alert" role="status"><span>Reconnecting to chat…</span></div>}{chatStatus === 'closed' && !useMock && <div className="travel-alert" role="status"><span>Live chat is offline; messages are still saved and appear for others on refresh.</span></div>}{chatError && <div className="travel-alert" role="alert"><span>{chatError}</span></div>}<div className="travel-chat-list">{messages.map((message) => {
       const isMine = isOwnMessage(message);

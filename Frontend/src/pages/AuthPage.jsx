@@ -6,6 +6,15 @@ import ThemeToggle from '../components/ThemeToggle';
 import { supabase } from '../services/supabase';
 import { apiClient } from '../services/apiClient';
 
+// supabase-js reports a network failure as "Failed to fetch"; say what that means.
+const readableAuthError = (error) => {
+  const message = error?.message || '';
+  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message) || error?.name === 'AuthRetryableFetchError') {
+    return 'Cannot reach the sign-in service. Check your internet connection and try again.';
+  }
+  return message || 'Something went wrong. Please try again.';
+};
+
 export default function AuthPage({ onNavigate, initialTab = 'login', theme, onToggleTheme }) {
   const normalizedInitial = (initialTab === 'register' || initialTab === 'signup') ? 'signup' : 'login';
   const [authTab, setAuthTab] = useState(normalizedInitial);
@@ -127,7 +136,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
         if (error.message.toLowerCase().includes('email not confirmed')) {
           setLoginErrorMsg('Please confirm your email before logging in.');
         } else {
-          setLoginErrorMsg(error.message);
+          setLoginErrorMsg(readableAuthError(error));
         }
         return;
       }
@@ -172,7 +181,7 @@ export default function AuthPage({ onNavigate, initialTab = 'login', theme, onTo
 
       if (error) {
         setSignupSubmitting(false);
-        setSignupErrorMsg(error.message);
+        setSignupErrorMsg(readableAuthError(error));
         return;
       }
 

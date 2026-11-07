@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
-  ArrowLeft, Compass, Calendar, Users, CreditCard, User, LogOut, Check,
+  ArrowLeft, Compass, Calendar, Users, CreditCard, User, Check,
   Hotel, Car, Ticket, RefreshCw, X, ArrowRight, Menu
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
-import { useAuth } from '../contexts/useAuth';
+import SidebarAccount from '../components/SidebarAccount';
 
 export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) {
-  const { user, profile, logout } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -195,44 +194,7 @@ export default function PlanOptionsPage({ onNavigate, trip, agentPlan = null }) 
           </nav>
         </div>
 
-        {/* Internal Portals Quick-Switch & Logout */}
-        <div className="border-t border-border-custom pt-4 px-6 space-y-4">
-          <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block text-left">Internal Portals</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onNavigate('admin-inventory')}
-                className="w-full text-center px-2 py-1.5 bg-navy text-white font-mono text-[11px] font-semibold rounded hover:bg-navy/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => onNavigate('author-plan')}
-                className="w-full text-center px-2 py-1.5 bg-teal-primary text-white font-mono text-[11px] font-semibold rounded hover:bg-teal-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary"
-              >
-                Agent Plan
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2 border-t border-border-custom/50">
-            <div className="w-10 h-10 rounded-full bg-teal-primary/15 border border-teal-primary/20 text-teal-primary font-bold flex items-center justify-center text-sm font-serif">
-              {(profile?.full_name || user?.user_metadata?.full_name || user?.email || 'T')[0].toUpperCase()}
-            </div>
-            <div className="text-left overflow-hidden">
-              <span className="text-sm font-bold text-navy block truncate">{profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'}</span>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 block">Explorer</span>
-            </div>
-          </div>
-
-          <button
-            onClick={async () => { await logout(); onNavigate('auth', 'login'); }}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-navy/75 hover:text-red-600 rounded-lg hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-primary transition-colors text-left"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
+        <SidebarAccount onNavigate={onNavigate} />
       </aside>
 
       {/* Main Content Area */}

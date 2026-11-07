@@ -174,5 +174,6 @@ export const tripService = {
       ? wait({ id: requestId, status: normalizedStatus })
       : apiClient.patch(`/api/v1/trips/${tripId}/join-requests/${requestId}`, { status: normalizedStatus }).then((response) => response.data);
   },
+  getItinerary: (tripId) => useMock ? wait([]) : apiClient.get(`/api/v1/trips/${tripId}/itinerary`).then((response) => response.data || []),
   leaveTrip: (tripId, userId) => useMock ? wait({ id: tripId, left: true }) : apiClient.delete(`/api/v1/trips/${tripId}/members/${userId}`)
 };
