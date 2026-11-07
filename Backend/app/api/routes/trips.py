@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import AuthenticatedUser, get_active_user, get_current_profile
+from app.api.pagination import MAX_PAGE
 from app.db.database import get_db
 from app.models import (
     Destination,
@@ -103,7 +104,7 @@ def apply_updates(row, values: dict) -> None:
 
 @router.get("", summary="List accessible trips")
 def list_trips(
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=MAX_PAGE),
     limit: int = Query(20, ge=1, le=100),
     discover: bool = Query(False),
     travel_type: Optional[Literal["solo", "group"]] = Query(None),
@@ -441,7 +442,7 @@ def delete_photo(photo_id: UUID, current_user: AuthenticatedUser = Depends(get_a
 # ---- Group messages ----------------------------------------------------------------
 
 @router.get("/{trip_id}/messages", summary="List group messages")
-def list_messages(trip_id: UUID, page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
+def list_messages(trip_id: UUID, page: int = Query(1, ge=1, le=MAX_PAGE), limit: int = Query(50, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     require_trip_member(db, trip_id, current_user.id)
     total = db.scalar(select(func.count(TripMessage.id)).where(TripMessage.trip_id == trip_id)) or 0
     rows = list(db.scalars(select(TripMessage).options(selectinload(TripMessage.sender)).where(TripMessage.trip_id == trip_id).order_by(TripMessage.created_at.desc()).offset((page - 1) * limit).limit(limit)).all())

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import AuthenticatedUser, get_active_user, get_current_profile, get_optional_user
+from app.api.pagination import MAX_PAGE
 from app.db.database import get_db
 from app.models import (
     AnswerLike,
@@ -224,12 +225,12 @@ def _user_id(current_user: AuthenticatedUser | None) -> UUID | None:
 
 
 @router.get("/questions", summary="List forum questions")
-def list_questions(query: str | None = Query(None, max_length=200), category: str | None = Query(None, max_length=80), destination: str | None = Query(None, max_length=120), sort: SortOption = Query("latest"), page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser | None = Depends(get_optional_user), db: Session = Depends(get_db)):
+def list_questions(query: str | None = Query(None, max_length=200), category: str | None = Query(None, max_length=80), destination: str | None = Query(None, max_length=120), sort: SortOption = Query("latest"), page: int = Query(1, ge=1, le=MAX_PAGE), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     return {"data": list_question_data(db, query, category, destination, sort, page, limit, _user_id(current_user))}
 
 
 @router.get("/search", summary="Search forum questions")
-def search_questions(query: str | None = Query(None, max_length=200), category: str | None = Query(None, max_length=80), destination: str | None = Query(None, max_length=120), sort: SortOption = Query("latest"), page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser | None = Depends(get_optional_user), db: Session = Depends(get_db)):
+def search_questions(query: str | None = Query(None, max_length=200), category: str | None = Query(None, max_length=80), destination: str | None = Query(None, max_length=120), sort: SortOption = Query("latest"), page: int = Query(1, ge=1, le=MAX_PAGE), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     return {"data": list_question_data(db, query, category, destination, sort, page, limit, _user_id(current_user))}
 
 

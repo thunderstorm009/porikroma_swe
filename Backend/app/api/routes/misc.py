@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import AuthenticatedUser, get_current_user, get_active_user
+from app.api.pagination import MAX_PAGE
 from app.db.database import get_db
 from app.models import EmergencyLocation, Notification
 from app.schemas import NotificationRead
@@ -50,7 +51,7 @@ def weather(latitude: float = Query(..., ge=-90, le=90), longitude: float = Quer
 
 
 @notifications_router.get("", summary="List authenticated notifications")
-def list_notifications(page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
+def list_notifications(page: int = Query(1, ge=1, le=MAX_PAGE), limit: int = Query(20, ge=1, le=100), current_user: AuthenticatedUser = Depends(get_active_user), db: Session = Depends(get_db)):
     query = select(Notification).where(Notification.user_id == current_user.id).order_by(Notification.created_at.desc())
     rows = db.scalars(query.offset((page - 1) * limit).limit(limit)).all()
     total = db.scalar(select(func.count(Notification.id)).where(Notification.user_id == current_user.id)) or 0

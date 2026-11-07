@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_profile
+from app.api.pagination import MAX_PAGE
 from app.db.database import get_db
 from app.models import Profile, Tour, TourDeparture, TourReservationRequest
 from app.schemas import DepartureRead, ReservationCreate, ReservationRead, TourRead
@@ -27,7 +28,7 @@ def public_tour(db: Session, tour_id: UUID) -> Tour:
 def list_tours(
     destination_id: UUID | None = None,
     query: str | None = Query(None, max_length=120),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=MAX_PAGE),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):

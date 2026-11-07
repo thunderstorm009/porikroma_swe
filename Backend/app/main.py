@@ -33,10 +33,29 @@ class RedactTokenFilter(logging.Filter):
 for _name in ("uvicorn.access", "uvicorn.error"):
     logging.getLogger(_name).addFilter(RedactTokenFilter())
 
+class RejectNulInUrlMiddleware:
+    """PostgreSQL text can't hold NUL, so a %00 in a search term or path segment made
+    psycopg2 raise (500). Reject such URLs up front. Bodies are checked in schemas.APIModel."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            raw = (scope.get("raw_path") or b"") + b"?" + (scope.get("query_string") or b"")
+            if b"%00" in raw or b"\x00" in raw:
+                response = JSONResponse(status_code=422, content={"detail": "URL cannot contain NUL (%00) characters"})
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(
     title="Porikroma API",
     version="1.0.0",
 )
+
+app.add_middleware(RejectNulInUrlMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

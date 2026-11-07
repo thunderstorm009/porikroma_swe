@@ -73,29 +73,35 @@ def _save_message(trip_id: uuid.UUID, user_id: uuid.UUID, content: str) -> dict 
 
 
 def _extract_text(raw: str) -> str:
+    # NUL can't be stored in PostgreSQL text; drop it instead of crashing the socket.
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
-        return raw.strip()
+        return raw.replace("\x00", "").strip()
     if isinstance(payload, dict):
-        return str(payload.get("text") or payload.get("content") or "").strip()
+        return str(payload.get("text") or payload.get("content") or "").replace("\x00", "").strip()
     if isinstance(payload, str):
-        return payload.strip()
+        return payload.replace("\x00", "").strip()
     return ""
 
 
 @router.websocket("/groups/{group_id}/chat")
 @router.websocket("/trips/{group_id}/chat")
 async def websocket_chat_endpoint(websocket: WebSocket, group_id: uuid.UUID, token: str = Query(...)):
+    # Rejections accept first and then close with 1008: closing before accept() becomes an
+    # HTTP 403 handshake failure, which browsers report as code 1006, and the frontend
+    # would keep reconnecting. 1008 tells it to stop.
     try:
         claims = _decode_token(token)
         user_id = uuid.UUID(str(claims["sub"]))
     except Exception:
         logger.info("WebSocket auth rejected for trip %s", group_id)
+        await websocket.accept()
         await websocket.close(code=1008)
         return
 
     if not await run_in_threadpool(_is_active_member, group_id, user_id):
+        await websocket.accept()
         await websocket.close(code=1008)
         return
 

@@ -2,16 +2,40 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import ClassVar, Generic, Literal, Optional, TypeVar
+from typing import Annotated, ClassVar, Generic, Literal, Optional, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+
+def _contains_nul(value) -> bool:
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_contains_nul(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_nul(item) for item in value)
+    return False
+
+
+# User-visible text: surrounding whitespace is trimmed and a blank value is rejected (422),
+# so "   " can't become an empty chat bubble, username or forum post.
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_nul_characters(cls, data):
+        # PostgreSQL text cannot hold NUL; psycopg2 would raise and the request would 500.
+        if isinstance(data, dict) and _contains_nul(data):
+            raise ValueError("Text cannot contain NUL (\\x00) characters")
+        return data
 
 
 class PatchModel(APIModel):
@@ -57,7 +81,7 @@ class ProfileRead(APIModel):
 
 
 class ProfileUpdate(APIModel):
-    username: Optional[str] = Field(default=None, min_length=2, max_length=80)
+    username: Optional[NonBlank] = Field(default=None, min_length=2, max_length=80)
     full_name: Optional[str] = Field(default=None, max_length=160)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
     bio: Optional[str] = Field(default=None, max_length=2000)
@@ -116,7 +140,7 @@ class TripMemberRead(APIModel):
 
 
 class TripCreate(APIModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: NonBlank = Field(max_length=200)
     description: Optional[str] = None
     destination_id: Optional[UUID] = None
     start_date: Optional[date] = None
@@ -139,7 +163,7 @@ class TripCreate(APIModel):
 class TripUpdate(PatchModel):
     non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "travel_type", "traveler_count", "budget", "status", "visibility"})
 
-    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    title: Optional[NonBlank] = Field(default=None, max_length=200)
     description: Optional[str] = None
     destination_id: Optional[UUID] = None
     start_date: Optional[date] = None
@@ -176,17 +200,19 @@ class MemberAdd(APIModel):
 
 
 class ItineraryCreate(APIModel):
+    # `dt.date`, not `date`: a field named `date` shadows the type inside the class body,
+    # which silently turned this field into "must be None".
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[dt.date] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    location_name: Optional[str] = None
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
+    location_name: Optional[str] = Field(default=None, max_length=240)
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
     estimated_cost: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
     category: Optional[str] = Field(default=None, max_length=60)
-    order_index: int = Field(default=0, ge=0)
+    order_index: int = Field(default=0, ge=0, le=100_000)
 
 
 class ItineraryUpdate(PatchModel):
@@ -194,15 +220,15 @@ class ItineraryUpdate(PatchModel):
 
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[dt.date] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    location_name: Optional[str] = None
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
+    location_name: Optional[str] = Field(default=None, max_length=240)
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
     estimated_cost: Optional[Decimal] = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     category: Optional[str] = Field(default=None, max_length=60)
-    order_index: Optional[int] = Field(default=None, ge=0)
+    order_index: Optional[int] = Field(default=None, ge=0, le=100_000)
 
 
 class ItineraryRead(ItineraryCreate):
@@ -305,7 +331,7 @@ class PhotoRead(PhotoCreate):
 
 
 class MessageCreate(APIModel):
-    content: str = Field(min_length=1, max_length=5000)
+    content: NonBlank = Field(max_length=5000)
 
 
 class MessageRead(APIModel):
@@ -319,8 +345,8 @@ class MessageRead(APIModel):
 
 
 class QuestionCreate(APIModel):
-    title: str = Field(min_length=1, max_length=240)
-    content: str = Field(min_length=1)
+    title: NonBlank = Field(max_length=240)
+    content: NonBlank
     destination_id: Optional[UUID] = None
     destination: Optional[str] = Field(default=None, max_length=160)
     category: str = Field(min_length=1, max_length=80)
@@ -330,8 +356,8 @@ class QuestionCreate(APIModel):
 class QuestionUpdate(PatchModel):
     non_nullable: ClassVar[frozenset[str]] = frozenset({"title", "content", "category", "tags"})
 
-    title: Optional[str] = Field(default=None, min_length=1, max_length=240)
-    content: Optional[str] = Field(default=None, min_length=1)
+    title: Optional[NonBlank] = Field(default=None, max_length=240)
+    content: Optional[NonBlank] = None
     destination_id: Optional[UUID] = None
     destination: Optional[str] = Field(default=None, max_length=160)
     category: Optional[str] = Field(default=None, min_length=1, max_length=80)
@@ -339,7 +365,7 @@ class QuestionUpdate(PatchModel):
 
 
 class ReplyCreate(APIModel):
-    content: str = Field(min_length=1)
+    content: NonBlank
 
 
 class AnswerCreate(ReplyCreate):
