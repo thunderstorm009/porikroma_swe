@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays, Check, ChevronRight, MapPin, Plus, Sparkles, Users } from 'lucide-react';
 import TravelShell from '../components/TravelShell';
 import { DESTINATIONS } from '../data/travelData';
@@ -16,6 +17,11 @@ export default function EnhancedDashboardPage({ onNavigate, trips, theme, onTogg
   const [recommendations, setRecommendations] = useState(null);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const { user } = useAuth();
+  // /trips is the "My Trips" view of this page: highlight it and jump to the trip list.
+  const isTripsView = useLocation().pathname === '/trips';
+  useEffect(() => {
+    if (isTripsView) document.getElementById('my-trips')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [isTripsView, trips.length]);
   const [recommendationError, setRecommendationError] = useState('');
   // Real spend per trip ({ [tripId]: { spent, percent } }) from each trip's budget summary.
   const [spending, setSpending] = useState({});
@@ -54,7 +60,7 @@ export default function EnhancedDashboardPage({ onNavigate, trips, theme, onTogg
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} title="Your travel map">
+    <TravelShell onNavigate={onNavigate} theme={theme} onToggleTheme={onToggleTheme} active={isTripsView ? 'My Trips' : 'Dashboard'} title={isTripsView ? 'My trips' : 'Your travel map'}>
       <div className="travel-hero travel-panel">
         <div>
           <span className="travel-kicker">{today}</span>
@@ -75,7 +81,7 @@ export default function EnhancedDashboardPage({ onNavigate, trips, theme, onTogg
 
       {recommendations && <div className="travel-panel travel-panel-pad travel-ai-card" style={{ marginTop: 17 }}><div className="travel-section-heading" style={{ margin: 0 }}><div><span className="travel-ai-title">✦ AI destination desk</span><h2>Places shaped around your preferences</h2><p>Ranked by how well each destination fits your budget and trip length.</p></div><button className="travel-link" onClick={() => setRecommendations(null)}>Dismiss</button></div><div className="travel-grid travel-grid-4" style={{ marginTop: 16 }}>{recommendations.map((item) => <button key={item.id} className="travel-location-card" style={{ marginTop: 0 }} onClick={() => onNavigate('create-trip')}><img src={item.image} alt="" /><span><strong>{item.name} <em style={{ color: '#2d6a4f', font: '700 10px var(--font-mono)' }}>{item.match}%</em></strong><small>{item.reason}</small></span></button>)}</div></div>}
 
-      <div className="travel-section-heading"><div><h2>Active trips</h2><p>Every trip keeps its own shared itinerary, budget and safety layer.</p></div></div>
+      <div className="travel-section-heading" id="my-trips" style={{ scrollMarginTop: 90 }}><div><h2>Active trips</h2><p>Every trip keeps its own shared itinerary, budget and safety layer.</p></div></div>
       {trips.length === 0 ? <div className="travel-panel travel-empty"><MapPin size={27} color="#2d6a4f" /><h3>No trips yet.</h3><p>Start planning your next adventure and your map will appear here.</p><button className="travel-button" onClick={() => onNavigate('create-trip')}><Plus size={14} /> Start planning</button></div> : <div className="travel-grid travel-grid-3">{trips.map((trip) => { const destination = destinationImage(trip); return <article key={trip.id} className="travel-panel travel-trip-card" onClick={() => onNavigate('trip-detail', trip.id)} onKeyDown={(e) => e.key === 'Enter' && onNavigate('trip-detail', trip.id)} tabIndex={0}><div className="travel-trip-image" style={{ backgroundImage: `url(${destination.image})` }}><span>{trip.type} trip · {trip.status}</span></div><div className="travel-trip-body"><h3>{trip.destination}</h3><p>{trip.dates}</p><div className="travel-trip-meta"><span><Users size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />{trip.members?.length || 1} travelers</span><strong>৳{Number(trip.budget || 0).toLocaleString()}</strong></div><div style={{ marginTop: 13 }}><div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--travel-muted)', fontSize: 10, marginBottom: 6 }}><span>Budget allocation</span><span>{budgetPercent(trip)}%</span></div><div className="travel-progress"><span style={{ width: `${budgetPercent(trip)}%` }} /></div></div></div></article>; })}</div>}
 
       <div className="travel-grid travel-grid-2" style={{ marginTop: 17 }}>

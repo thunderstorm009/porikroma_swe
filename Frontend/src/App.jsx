@@ -218,6 +218,7 @@ export default function App() {
       case 'landing': navigate('/'); break;
       case 'auth': navigate(`/${extra || 'login'}`); break;
       case 'dashboard': navigate('/dashboard'); break;
+      case 'my-trips': navigate('/trips'); break;
       case 'create-trip': navigate('/trips/new'); break;
       case 'browse-groups': navigate('/groups'); break;
       case 'trip-detail': navigate(`/trips/${extra}`); break;

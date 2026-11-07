@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { 
-  Users, Calendar, Compass, CreditCard, User, Search,
-  X, Check, Loader2, ArrowRight, Menu
+import {
+  Users, Calendar, Compass, CreditCard, User, Search, X, Check, Loader2, ArrowRight, Menu, Bot, MessageCircle
 } from 'lucide-react';
 import LogoIcon from '../components/LogoIcon';
 import SidebarAccount from '../components/SidebarAccount';
@@ -81,9 +80,12 @@ export default function BrowseGroupsPage({ onNavigate }) {
   }, [reloadToken, user?.id]);
 
   // Sidebar Menu Items
+  // Same links and order as TravelShell, so navigation looks the same on every page.
   const menuItems = [
     { name: 'Dashboard', icon: <Compass size={18} />, active: false, action: () => onNavigate('dashboard') },
-    { name: 'My Trips', icon: <Calendar size={18} />, active: false, action: () => onNavigate('dashboard') },
+    { name: 'My Trips', icon: <Calendar size={18} />, active: false, action: () => onNavigate('my-trips') },
+    { name: 'AI Assistant', icon: <Bot size={18} />, active: false, action: () => onNavigate('ai-chat') },
+    { name: 'Community', icon: <MessageCircle size={18} />, active: false, action: () => onNavigate('community') },
     { name: 'Browse Groups', icon: <Users size={18} />, active: true, action: () => onNavigate('browse-groups') },
     { name: 'Expenses', icon: <CreditCard size={18} />, active: false, action: () => onNavigate('expenses') },
     { name: 'Profile', icon: <User size={18} />, active: false, action: () => onNavigate('profile') }

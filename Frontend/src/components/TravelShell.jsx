@@ -21,7 +21,7 @@ export default function TravelShell({ children, onNavigate, onGoBack, theme, onT
 
   const links = [
     { name: 'Dashboard', icon: <Compass size={17} />, view: 'dashboard' },
-    { name: 'My Trips', icon: <Calendar size={17} />, view: 'dashboard' },
+    { name: 'My Trips', icon: <Calendar size={17} />, view: 'my-trips' },
     { name: 'AI Assistant', icon: <Bot size={17} />, view: 'ai-chat' },
     { name: 'Community', icon: <MessageCircle size={17} />, view: 'community' },
     { name: 'Browse Groups', icon: <Users size={17} />, view: 'browse-groups' },
